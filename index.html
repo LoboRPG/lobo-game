@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wolf Hunter: Ancient Orbs</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        body { margin: 0; background: #050505; color: white; font-family: 'Verdana', sans-serif; overflow: hidden; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; pointer-events: none; padding: 15px; z-index: 10; }
+        .stats { font-size: 14px; font-weight: bold; text-shadow: 2px 2px #000; pointer-events: auto; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px; border: 1px solid #333; }
+        
+        #wish-menu { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 85%; max-width: 400px; background: rgba(10, 10, 15, 0.98); 
+            border: 2px solid #888; border-radius: 20px; padding: 25px;
+            display: none; flex-direction: column; align-items: center; z-index: 100; text-align: center;
+        }
+        .wish-btn { 
+            background: #222; color: #fff; border: 1px solid #555;
+            padding: 12px; margin: 8px; cursor: pointer; width: 100%; border-radius: 10px;
+        }
+        .wish-btn:enabled { border-color: gold; color: gold; box-shadow: 0 0 10px rgba(255,215,0,0.3); }
+        
+        #match3-overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 50;
+        }
+        .notif { color: #00ffcc; font-size: 18px; margin-top: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="ui-layer">
+    <div class="stats" id="info">Iniciando rastro...</div>
+    <button class="stats" style="margin-left:10px; cursor:pointer; color:cyan;" onclick="toggleWishes()">🌕 ALTAR</button>
+    <div id="msg" class="notif"></div>
+</div>
+
+<div id="wish-menu">
+    <h2 style="color: gold; margin-top: 0;">Deseos del Lobo</h2>
+    <p id="wish-count" style="font-size: 1.2em;">Orbes: 0</p>
+    <button class="wish-btn" id="btn-epic" onclick="redeem(10, 'Épico')">Deseo Épico (10 Orbes)<br><small>Agilidad de Viento (+Velocidad)</small></button>
+    <button class="wish-btn" id="btn-legend" onclick="redeem(60, 'Legendario')">Deseo Legendario (60 Orbes)<br><small>Espíritu de Fuego (Skin Especial)</small></button>
+    <button onclick="toggleWishes()" style="background:none; border:none; color:#666; margin-top:15px; cursor:pointer;">Regresar al bosque</button>
+</div>
+
+<div id="match3-overlay">
+    <h2 style="color: #ff4444;">FASE DE CACERÍA</h2>
+    <p>Acechando a la presa en el mapa...</p>
+</div>
+
+<script>
+// --- DATOS Y GUARDADO ---
+let data = JSON.parse(localStorage.getItem('wolf_mega_save')) || {
+    level: 1, exp: 0, orbes: 0, mapa: 1, vel: 170, fireSkin: false
+};
+
+function save() {
+    localStorage.setItem('wolf_mega_save', JSON.stringify(data));
+    document.getElementById('info').innerText = `Lvl: ${data.level} | Mapa: ${data.mapa} | Orbes: ${data.orbes}`;
+    document.getElementById('wish-count').innerText = `Orbes actuales: ${data.orbes}`;
+    document.getElementById('btn-epic').disabled = data.orbes < 10;
+    document.getElementById('btn-legend').disabled = data.orbes < 60;
+}
+
+// --- JUEGO PHASER ---
+const config = {
+    type: Phaser.AUTO,
+    width: window.innerWidth,
+    height: window.innerHeight,
+    physics: { default: 'arcade' },
+    scene: { preload: preload, create: create, update: update }
+};
+
+const game = new Phaser.Game(config);
+let player, preys, music, sfxHunt, sfxOrb;
+
+function preload() {
+    // Fondos
+    this.load.image('snow', 'https://labs.phaser.io/assets/skies/space3.png');
+    
+    // AUDIO (MP3 Públicos)
+    this.load.audio('forest_ambience', 'https://codeskulptor-demos.commondatastorage.googleapis.com/descent/background%20music.mp3');
+    this.load.audio('bite', 'https://codeskulptor-demos.commondatastorage.googleapis.com/pang/pop.mp3');
+    this.load.audio('orb_sound', 'https://codeskulptor-demos.commondatastorage.googleapis.com/descent/got_item.mp3');
+}
+
+function create() {
+    this.cameras.main.setBounds(0, 0, 3000, 3000);
+    this.physics.world.setBounds(0, 0, 3000, 3000);
+
+    // Música de ambiente
+    music = this.sound.add('forest_ambience', { loop: true, volume: 0.3 });
+    music.play();
+    sfxHunt = this.sound.add('bite', { volume: 0.6 });
+    sfxOrb = this.sound.add('orb_sound', { volume: 0.8 });
+
+    // Fondo
+    for(let i=0; i<8; i++) for(let j=0; j<8; j++) {
+        this.add.image(i*400, j*600, 'snow').setAlpha(0.2);
+    }
+
+    // Lobo
+    let color = data.fireSkin ? 0xff4500 : 0xffffff;
+    player = this.add.circle(500, 500, 16, color);
+    this.physics.add.existing(player);
+    player.body.setCollideWorldBounds(true);
+    this.cameras.main.startFollow(player, true, 0.1, 0.1);
+
+    preys = this.physics.add.group();
+    for(let i=0; i<20; i++) spawnPrey(this);
+
+    this.physics.add.overlap(player, preys, startBattle, null, this);
+    save();
+}
+
+function update() {
+    if (this.input.activePointer.isDown) {
+        this.physics.moveToObject(player, this.input.activePointer, data.vel);
+    } else {
+        player.body.setVelocity(0);
+    }
+}
+
+function spawnPrey(scene) {
+    let x = Phaser.Math.Between(100, 2900);
+    let y = Phaser.Math.Between(100, 2900);
+    let p = scene.add.circle(x, y, 10, 0x00ff88);
+    scene.physics.add.existing(p);
+    preys.add(p);
+}
+
+function startBattle(player, prey) {
+    prey.destroy();
+    sfxHunt.play();
+    document.getElementById('match3-overlay').style.display = 'flex';
+    
+    setTimeout(() => {
+        document.getElementById('match3-overlay').style.display = 'none';
+        finishHunt();
+    }, 600); 
+}
+
+function finishHunt() {
+    data.exp += 25;
+    if (data.exp >= 100) {
+        data.level++;
+        data.exp = 0;
+        data.mapa = Math.floor(data.level / 5) + 1;
+    }
+
+    // REGLA DE ORBES: Solo al Nivel 20 o Mapa 4
+    if (data.level >= 20 || data.mapa >= 4) {
+        if (Math.random() < 0.25) { 
+            data.orbes++;
+            sfxOrb.play();
+            showNotif("¡ORBE ENCONTRADO!");
+        }
+    }
+    save();
+    spawnPrey(game.scene.scenes[0]);
+}
+
+function toggleWishes() {
+    const menu = document.getElementById('wish-menu');
+    menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
+}
+
+function redeem(cost, tipo) {
+    if (data.orbes >= cost) {
+        data.orbes -= cost;
+        if (tipo === 'Épico') data.vel += 70;
+        if (tipo === 'Legendario') {
+            data.fireSkin = true;
+            player.setFillStyle(0xff4500);
+        }
+        sfxOrb.play();
+        save();
+        alert(`Deseo ${tipo} concedido.`);
+        toggleWishes();
+    }
+}
+
+function showNotif(txt) {
+    const m = document.getElementById('msg');
+    m.innerText = txt;
+    setTimeout(() => m.innerText = "", 3000);
+}
+</script>
+</body>
+</html>
