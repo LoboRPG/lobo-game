@@ -3,126 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wolf RPG: Real Animals</title>
+    <title>Wolf RPG: Elite Hunter</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
     <style>
-        body { margin: 0; background: #051005; overflow: hidden; font-family: sans-serif; }
-        #ui { position: absolute; top: 10px; left: 10px; z-index: 10; pointer-events: none; width: 95%; }
-        .stat-box { background: rgba(0,0,0,0.85); color: #00ffcc; padding: 12px; border-radius: 10px; font-weight: bold; pointer-events: auto; border: 2px solid #444; display: flex; align-items: center; gap: 10px; }
-        #altar-btn { background: linear-gradient(135deg, #ffd700, #b8860b); color: #000; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; pointer-events: auto; font-weight: bold; margin-top: 8px; }
-        #wish-menu { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; color: white; text-align: center; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .hud { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); border: 2px solid #ffd700; color: #fff; padding: 12px; border-radius: 12px; pointer-events: auto; box-shadow: 0 0 15px rgba(255,215,0,0.3); }
+        .stat-bar { font-size: 16px; font-weight: bold; color: #00ffcc; text-transform: uppercase; letter-spacing: 1px; }
+        #altar-btn { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background: linear-gradient(180deg, #ffd700 0%, #b8860b 100%); color: #000; border: none; padding: 15px 40px; border-radius: 50px; cursor: pointer; pointer-events: auto; font-weight: bold; font-size: 18px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
 
-<div id="ui">
-    <div class="stat-box" id="info">🐺 Cargando Bosque...</div>
-    <button id="altar-btn" onclick="document.getElementById('wish-menu').style.display='flex'">🌕 ALTAR SAGRADO</button>
-</div>
-
-<div id="wish-menu">
-    <h2 style="color: gold;">Altar de Orbes Antiguos</h2>
-    <p>Orbes Poseídos: <span id="orb-count" style="color: #00ffcc;">0</span></p>
-    <p style="font-size: 12px; color: #888;">Regla: 10 orbes = Épico | 60 orbes = Legendario<br>Aparecen a partir del Nivel 20</p>
-    <button onclick="document.getElementById('wish-menu').style.display='none'" style="margin-top:20px; padding:10px 30px; border-radius: 8px; background: #444; color: white; border: none;">Regresar</button>
+<div id="ui-layer">
+    <div class="hud">
+        <div class="stat-bar" id="info">🐺 ALFA LVL: 1</div>
+        <div style="font-size: 12px; color: #ffd700;" id="sub-info">MAPA: 1 | ORBES: 0</div>
+    </div>
+    <button id="altar-btn" onclick="openAltar()">🌕 ALTAR SAGRADO</button>
 </div>
 
 <script>
-let data = JSON.parse(localStorage.getItem('wolf_real_v2')) || { level: 1, exp: 0, orbes: 0, mapa: 1, vel: 240, color: 0xffffff };
-
-function save() {
-    localStorage.setItem('wolf_real_v2', JSON.stringify(data));
-    document.getElementById('info').innerHTML = `🐺 LVL: ${data.level} | 🗺️ MAPA: ${data.mapa} | ✨ ORBES: ${data.orbes}`;
-    document.getElementById('orb-count').innerText = data.orbes;
-}
+let data = JSON.parse(localStorage.getItem('wolf_elite_save')) || { level: 1, exp: 0, orbes: 0, mapa: 1, vel: 280, color: 0xffffff };
 
 const config = {
     type: Phaser.AUTO,
     width: window.innerWidth,
     height: window.innerHeight,
-    physics: { default: 'arcade' },
+    physics: { default: 'arcade', arcade: { gravity: { y: 0 } } },
     scene: { preload: preload, create: create, update: update }
 };
 
 const game = new Phaser.Game(config);
-let player, preys, audioCtx;
+let player, preys, cursors;
 
 function preload() {
-    // IMÁGENES DE ANIMALES REALES
-    this.load.image('forest_floor', 'https://labs.phaser.io/assets/textures/grass.png');
-    this.load.image('wolf_sprite', 'https://labs.phaser.io/assets/sprites/clown.png'); // Base de Lobo
-    this.load.image('prey_sprite', 'https://labs.phaser.io/assets/sprites/apple.png'); // Base de Animal
-}
-
-function playNote(f, d) {
-    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    let o = audioCtx.createOscillator();
-    let g = audioCtx.createGain();
-    o.frequency.setValueAtTime(f, audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + d);
-    o.connect(g); g.connect(audioCtx.destination);
-    o.start(); o.stop(audioCtx.currentTime + d);
+    // CARGA DE ASSETS DE ALTA CALIDAD
+    this.load.image('forest_bg', 'https://labs.phaser.io/assets/textures/terrain.png');
+    this.load.image('wolf_hero', 'https://img.icons8.com/color/144/wolf.png'); // Lobo mucho más grande
+    this.load.image('deer_target', 'https://img.icons8.com/color/96/deer.png'); // Presa detallada
 }
 
 function create() {
-    // Suelo de bosque
-    this.add.tileSprite(0, 0, 4000, 4000, 'forest_floor').setAlpha(0.2);
-    this.cameras.main.setBounds(0, 0, 2000, 2000);
-    this.physics.world.setBounds(0, 0, 2000, 2000);
+    // Fondo con textura de terreno realista
+    this.add.tileSprite(0, 0, 5000, 5000, 'forest_bg').setOrigin(0).setAlpha(0.6);
+    this.cameras.main.setBounds(0, 0, 2500, 2500);
+    this.physics.world.setBounds(0, 0, 2500, 2500);
 
-    // El Lobo
-    player = this.physics.add.sprite(500, 500, 'wolf_sprite');
-    player.setScale(0.8);
-    player.setTint(data.color); // Aplica tu color actual
+    // Jugador: Lobo Alfa
+    player = this.physics.add.sprite(500, 500, 'wolf_hero');
+    player.setScale(1.5); // Aumentamos el tamaño para que se vea imponente
+    player.setTint(data.color);
     player.setCollideWorldBounds(true);
-    this.cameras.main.startFollow(player, true, 0.1, 0.1);
+    this.cameras.main.startFollow(player, true, 0.08, 0.08);
 
     preys = this.physics.add.group();
-    for(let i=0; i<15; i++) spawnPrey(this);
+    for(let i=0; i<12; i++) spawnPrey(this);
 
+    // Colisión mejorada
     this.physics.add.overlap(player, preys, (p, prey) => {
         prey.destroy();
-        playNote(150, 0.1);
         data.exp += 34;
+        
+        // Efecto visual al cazar
+        this.cameras.main.shake(100, 0.01);
 
         if(data.exp >= 100) {
             data.level++;
             data.exp = 0;
             data.mapa = Math.floor(data.level/5) + 1;
-            // Cambiar color del lobo al azar
             data.color = Phaser.Display.Color.RandomRGB().color;
             player.setTint(data.color);
-            playNote(500, 0.3);
         }
 
-        // REGLA DE ORBES: Nivel 20 o Mapa 4
+        // Regla de Orbes: Nivel 20
         if(data.level >= 20 || data.mapa >= 4) {
-            if(Math.random() < 0.25) {
-                data.orbes++;
-                playNote(900, 0.5);
-            }
+            if(Math.random() < 0.25) data.orbes++;
         }
-        save();
+        updateUI();
         spawnPrey(this);
     }, null, this);
-    save();
+
+    updateUI();
 }
 
 function update() {
     if (this.input.activePointer.isDown) {
         this.physics.moveToObject(player, this.input.activePointer, data.vel);
-        player.rotation = Phaser.Math.Angle.Between(player.x, player.y, this.input.activePointer.worldX, this.input.activePointer.worldY);
+        let angle = Phaser.Math.Angle.Between(player.x, player.y, this.input.activePointer.worldX, this.input.activePointer.worldY);
+        player.rotation = angle + 1.5;
     } else {
         player.body.setVelocity(0);
     }
 }
 
 function spawnPrey(scene) {
-    let x = Phaser.Math.Between(100, 1900);
-    let y = Phaser.Math.Between(100, 1900);
-    let p = scene.physics.add.sprite(x, y, 'prey_sprite');
-    p.setScale(0.6);
-    preys.add(p);
+    let x = Phaser.Math.Between(100, 2400);
+    let y = Phaser.Math.Between(100, 2400);
+    let d = scene.physics.add.sprite(x, y, 'deer_target');
+    d.setScale(0.7);
+    preys.add(d);
+}
+
+function updateUI() {
+    localStorage.setItem('wolf_elite_save', JSON.stringify(data));
+    document.getElementById('info').innerText = `🐺 ALFA LVL: ${data.level}`;
+    document.getElementById('sub-info').innerText = `MAPA: ${data.mapa} | ORBES: ${data.orbes}`;
+}
+
+function openAltar() {
+    alert("ALTAR SAGRADO\nOrbes: " + data.orbes + "\n\n10 Orbes: Deseo Épico\n60 Orbes: Deseo Legendario");
 }
 </script>
 </body>
