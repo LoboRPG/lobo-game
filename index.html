@@ -3,107 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wolf Hunter: Ancient Orbs</title>
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <title>Wolf Hunter: Color Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
     <style>
-        body { margin: 0; background: #050505; color: white; font-family: 'Verdana', sans-serif; overflow: hidden; }
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; pointer-events: none; padding: 15px; z-index: 10; }
-        .stats { font-size: 14px; font-weight: bold; text-shadow: 2px 2px #000; pointer-events: auto; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px; border: 1px solid #333; }
-        
-        #wish-menu { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 85%; max-width: 400px; background: rgba(10, 10, 15, 0.98); 
-            border: 2px solid #888; border-radius: 20px; padding: 25px;
-            display: none; flex-direction: column; align-items: center; z-index: 100; text-align: center;
-        }
-        .wish-btn { 
-            background: #222; color: #fff; border: 1px solid #555;
-            padding: 12px; margin: 8px; cursor: pointer; width: 100%; border-radius: 10px;
-        }
-        .wish-btn:enabled { border-color: gold; color: gold; box-shadow: 0 0 10px rgba(255,215,0,0.3); }
-        
-        #match3-overlay { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 50;
-        }
-        .notif { color: #00ffcc; font-size: 18px; margin-top: 10px; font-weight: bold; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        #ui { position: absolute; top: 10px; left: 10px; z-index: 10; pointer-events: none; }
+        .stat-box { background: rgba(0,0,0,0.8); color: #fff; padding: 8px 12px; border-radius: 8px; font-weight: bold; pointer-events: auto; margin-bottom: 5px; border: 1px solid #444; font-size: 14px; }
+        #altar-btn { background: #ffd700; color: #000; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; pointer-events: auto; font-weight: bold; }
+        #wish-menu { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; color: white; text-align: center; }
     </style>
 </head>
 <body>
 
-<div id="ui-layer">
-    <div class="stats" id="info">Iniciando rastro...</div>
-    <button class="stats" style="margin-left:10px; cursor:pointer; color:cyan;" onclick="toggleWishes()">🌕 ALTAR</button>
-    <div id="msg" class="notif"></div>
+<div id="ui">
+    <div class="stat-box" id="info">Lvl: 1 | Orbes: 0</div>
+    <button id="altar-btn" onclick="document.getElementById('wish-menu').style.display='flex'">🌕 ALTAR</button>
 </div>
 
 <div id="wish-menu">
-    <h2 style="color: gold; margin-top: 0;">Deseos del Lobo</h2>
-    <p id="wish-count" style="font-size: 1.2em;">Orbes: 0</p>
-    <button class="wish-btn" id="btn-epic" onclick="redeem(10, 'Épico')">Deseo Épico (10 Orbes)<br><small>Agilidad de Viento (+Velocidad)</small></button>
-    <button class="wish-btn" id="btn-legend" onclick="redeem(60, 'Legendario')">Deseo Legendario (60 Orbes)<br><small>Espíritu de Fuego (Skin Especial)</small></button>
-    <button onclick="toggleWishes()" style="background:none; border:none; color:#666; margin-top:15px; cursor:pointer;">Regresar al bosque</button>
-</div>
-
-<div id="match3-overlay">
-    <h2 style="color: #ff4444;">FASE DE CACERÍA</h2>
-    <p>Acechando a la presa en el mapa...</p>
+    <h2 style="color: gold;">Altar de Deseos</h2>
+    <p>Orbes: <span id="orb-count">0</span></p>
+    <p style="font-size: 12px; color: #888;">Regla: 10 Orbes (Épico) | 60 Orbes (Legendario)<br>Disponibles desde Nivel 20</p>
+    <button onclick="document.getElementById('wish-menu').style.display='none'" style="margin-top:20px; padding:10px 30px;">Cerrar</button>
 </div>
 
 <script>
-// --- DATOS Y GUARDADO ---
-let data = JSON.parse(localStorage.getItem('wolf_mega_save')) || {
-    level: 1, exp: 0, orbes: 0, mapa: 1, vel: 170, fireSkin: false
-};
+// --- DATOS INICIALES ---
+let data = JSON.parse(localStorage.getItem('wolf_color_save')) || { level: 1, exp: 0, orbes: 0, mapa: 1, vel: 210, color: 0xffffff };
+
+const colors = [0xffffff, 0x00ff00, 0x00ffff, 0x0000ff, 0xff00ff, 0xffff00, 0xff4500, 0xff0000];
 
 function save() {
-    localStorage.setItem('wolf_mega_save', JSON.stringify(data));
+    localStorage.setItem('wolf_color_save', JSON.stringify(data));
     document.getElementById('info').innerText = `Lvl: ${data.level} | Mapa: ${data.mapa} | Orbes: ${data.orbes}`;
-    document.getElementById('wish-count').innerText = `Orbes actuales: ${data.orbes}`;
-    document.getElementById('btn-epic').disabled = data.orbes < 10;
-    document.getElementById('btn-legend').disabled = data.orbes < 60;
+    document.getElementById('orb-count').innerText = data.orbes;
 }
 
-// --- JUEGO PHASER ---
 const config = {
     type: Phaser.AUTO,
     width: window.innerWidth,
     height: window.innerHeight,
+    backgroundColor: '#050505',
     physics: { default: 'arcade' },
     scene: { preload: preload, create: create, update: update }
 };
 
 const game = new Phaser.Game(config);
-let player, preys, music, sfxHunt, sfxOrb;
+let player, preys, audioCtx;
 
 function preload() {
-    // Fondos
-    this.load.image('snow', 'https://labs.phaser.io/assets/skies/space3.png');
-    
-    // AUDIO (MP3 Públicos)
-    this.load.audio('forest_ambience', 'https://codeskulptor-demos.commondatastorage.googleapis.com/descent/background%20music.mp3');
-    this.load.audio('bite', 'https://codeskulptor-demos.commondatastorage.googleapis.com/pang/pop.mp3');
-    this.load.audio('orb_sound', 'https://codeskulptor-demos.commondatastorage.googleapis.com/descent/got_item.mp3');
+    this.load.image('bg', 'https://labs.phaser.io/assets/skies/space3.png');
+}
+
+function playSound(f, d) {
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let o = audioCtx.createOscillator();
+    let g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + d);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + d);
 }
 
 function create() {
-    this.cameras.main.setBounds(0, 0, 3000, 3000);
-    this.physics.world.setBounds(0, 0, 3000, 3000);
+    this.add.tileSprite(0, 0, 5000, 5000, 'bg').setAlpha(0.1);
+    this.cameras.main.setBounds(0, 0, 2500, 2500);
+    this.physics.world.setBounds(0, 0, 2500, 2500);
 
-    // Música de ambiente
-    music = this.sound.add('forest_ambience', { loop: true, volume: 0.3 });
-    music.play();
-    sfxHunt = this.sound.add('bite', { volume: 0.6 });
-    sfxOrb = this.sound.add('orb_sound', { volume: 0.8 });
-
-    // Fondo
-    for(let i=0; i<8; i++) for(let j=0; j<8; j++) {
-        this.add.image(i*400, j*600, 'snow').setAlpha(0.2);
-    }
-
-    // Lobo
-    let color = data.fireSkin ? 0xff4500 : 0xffffff;
-    player = this.add.circle(500, 500, 16, color);
+    // Jugador con el color guardado
+    player = this.add.circle(500, 500, 15, data.color);
     this.physics.add.existing(player);
     player.body.setCollideWorldBounds(true);
     this.cameras.main.startFollow(player, true, 0.1, 0.1);
@@ -111,7 +80,32 @@ function create() {
     preys = this.physics.add.group();
     for(let i=0; i<20; i++) spawnPrey(this);
 
-    this.physics.add.overlap(player, preys, startBattle, null, this);
+    this.physics.add.overlap(player, preys, (p, prey) => {
+        prey.destroy();
+        playSound(200, 0.1);
+        data.exp += 34;
+
+        if(data.exp >= 100) {
+            data.level++;
+            data.exp = 0;
+            data.mapa = Math.floor(data.level/5) + 1;
+            // CAMBIO DE COLOR AL SUBIR DE NIVEL
+            data.color = colors[data.level % colors.length];
+            player.setFillStyle(data.color);
+            playSound(500, 0.3);
+        }
+
+        // REGLA: Orbes en Nivel 20 o Mapa 4
+        if(data.level >= 20 || data.mapa >= 4) {
+            if(Math.random() < 0.25) {
+                data.orbes++;
+                playSound(900, 0.4);
+            }
+        }
+        save();
+        spawnPrey(this);
+    }, null, this);
+
     save();
 }
 
@@ -124,68 +118,11 @@ function update() {
 }
 
 function spawnPrey(scene) {
-    let x = Phaser.Math.Between(100, 2900);
-    let y = Phaser.Math.Between(100, 2900);
+    let x = Phaser.Math.Between(100, 2400);
+    let y = Phaser.Math.Between(100, 2400);
     let p = scene.add.circle(x, y, 10, 0x00ff88);
     scene.physics.add.existing(p);
     preys.add(p);
-}
-
-function startBattle(player, prey) {
-    prey.destroy();
-    sfxHunt.play();
-    document.getElementById('match3-overlay').style.display = 'flex';
-    
-    setTimeout(() => {
-        document.getElementById('match3-overlay').style.display = 'none';
-        finishHunt();
-    }, 600); 
-}
-
-function finishHunt() {
-    data.exp += 25;
-    if (data.exp >= 100) {
-        data.level++;
-        data.exp = 0;
-        data.mapa = Math.floor(data.level / 5) + 1;
-    }
-
-    // REGLA DE ORBES: Solo al Nivel 20 o Mapa 4
-    if (data.level >= 20 || data.mapa >= 4) {
-        if (Math.random() < 0.25) { 
-            data.orbes++;
-            sfxOrb.play();
-            showNotif("¡ORBE ENCONTRADO!");
-        }
-    }
-    save();
-    spawnPrey(game.scene.scenes[0]);
-}
-
-function toggleWishes() {
-    const menu = document.getElementById('wish-menu');
-    menu.style.display = (menu.style.display === 'flex') ? 'none' : 'flex';
-}
-
-function redeem(cost, tipo) {
-    if (data.orbes >= cost) {
-        data.orbes -= cost;
-        if (tipo === 'Épico') data.vel += 70;
-        if (tipo === 'Legendario') {
-            data.fireSkin = true;
-            player.setFillStyle(0xff4500);
-        }
-        sfxOrb.play();
-        save();
-        alert(`Deseo ${tipo} concedido.`);
-        toggleWishes();
-    }
-}
-
-function showNotif(txt) {
-    const m = document.getElementById('msg');
-    m.innerText = txt;
-    setTimeout(() => m.innerText = "", 3000);
 }
 </script>
 </body>
