@@ -1,234 +1,527 @@
-# bot.py
-# Bot RPG del Lobo para Telegram - Versión completa para Replit / hosting
-# Usa python-telegram-bot v20+ (en Replit instalar con Packages)
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wolf Simulator MMO - Caza Salvaje 🐺</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { margin: 0; background: linear-gradient(180deg, #228B22 0%, #006400 70%, #2F4F2F 100%); font-family: 'Arial Black', Arial, sans-serif; overflow: hidden; color: #fff; }
+        canvas { display: block; touch-action: none; }
+        #ui { position: absolute; top: 10px; left: 10px; z-index: 20; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 15px; font-size: 14px; min-width: 200px; }
+        #stats { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        #xp-bar { height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin-top: 5px; }
+        #xp-fill { height: 100%; background: linear-gradient(90deg, #ffaa00, #ff4400); transition: width 0.3s; }
+        #buttons { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 20; }
+        button { background: linear-gradient(145deg, #0088cc, #005a99); color: white; border: none; padding: 12px 24px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transition: all 0.2s; }
+        button:hover { transform: scale(1.05); }
+        button:active { transform: scale(0.98); }
+        #share { background: linear-gradient(145deg, #44ff44, #00aa00); display: none; }
+        #minimap { position: absolute; top: 10px; right: 10px; width: 120px; height: 120px; background: rgba(0,0,0,0.8); border: 2px solid #fff; border-radius: 10px; z-index: 20; }
+        #joystick { position: absolute; bottom: 100px; left: 20px; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 4px solid rgba(255,255,255,0.5); display: none; z-index: 15; touch-action: none; }
+        #joystick-knob { position: absolute; width: 40px; height: 40px; background: rgba(255,255,255,0.8); border-radius: 50%; left: 30px; top: 30px; transition: all 0.1s; }
+        #mode { position: absolute; top: 10px; right: 140px; background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div id="stats">
+            <div>
+                <div>🐺 <span id="playerName">Lobo Alfa</span></div>
+                <div>HP: <span id="hp">100</span>/100</div>
+            </div>
+            <div>
+                Nivel: <span id="level">1</span>
+                <div id="xp-bar"><div id="xp-fill" style="width:0%"></div></div>
+                <div>XP: <span id="xp">0</span>/100</div>
+            </div>
+        </div>
+        <div>Hambre: <span id="hunger">100</span> | Manada: <span id="packSize">3</span></div>
+    </div>
+    <div id="minimap"></div>
+    <div id="mode">Modo: Caza 🦌</div>
+    <div id="joystick"><div id="joystick-knob"></div></div>
+    <div id="buttons">
+        <button id="arenaBtn">Arena PvP ⚔️</button>
+        <button id="huntBtn">Caza Co-op 🏹</button>
+        <button id="share" style="display:none;">¡Compartí tu Nivel! 🏆</button>
+    </div>
+    <canvas id="canvas"></canvas>
+    <script>
+        'use strict';
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        tg.requestViewport();
+        const user = tg.initDataUnsafe.user || { first_name: 'Lobo' };
+        document.getElementById('playerName').textContent = user.first_name;
 
-import logging
-import random
-import os
-from typing import Dict
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let WIDTH, HEIGHT;
+        function resize() {
+            WIDTH = window.innerWidth;
+            HEIGHT = window.innerHeight;
+            canvas.width = WIDTH;
+            canvas.height = HEIGHT;
+        }
+        window.addEventListener('resize', resize);
+        resize();
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-)
+        // Game state
+        const WORLD_SIZE = 4000;
+        let camera = { x: 0, y: 0, targetX: 0, targetY: 0 };
+        let player = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2, vx: 0, vy: 0, speed: 3, angle: 0, hp: 100, maxHp: 100, xp: 0, level: 1, hunger: 100, attacking: false, attackCooldown: 0, packSize: 3 };
+        let prey = [];
+        let pack = []; // AI pack wolves
+        let trees = [];
+        let rocks = [];
+        let mode = 'hunt'; // 'hunt' or 'arena'
+        let gameTime = 0;
+        let keys = {};
+        let touchId = null;
+        let joystickActive = false;
+        let joystickAngle = 0, joystickDist = 0;
 
-# Configuración de logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+        // Prey types: {emoji, size, xpGain, fleeSpeed, hp}
+        const PREY_TYPES = [
+            { emoji: '🐿️', size: 20, xp: 5, flee: 1.5, hp: 20 }, // rat/squirrel
+            { emoji: '🐰', size: 25, xp: 10, flee: 2.0, hp: 30 },
+            { emoji: '🦊', size: 30, xp: 20, flee: 2.2, hp: 50 },
+            { emoji: '🦌', size: 40, xp: 50, flee: 1.8, hp: 80 },
+            { emoji: '🐂', size: 50, xp: 100, flee: 1.2, hp: 150 } // bull/bison
+        ];
 
-# -------------------------------
-# CLASE LOBO (versión simplificada y completa)
-# -------------------------------
-class Lobo:
-    def __init__(self, nombre="Lobo Sin Nombre"):
-        self.nombre = nombre
-        self.vida = 100
-        self.vida_max = 100
-        self.hambre = 0
-        self.fuerza = 10
-        self.velocidad = 10
-        self.orbes = 0
-        self.armadura = "Ninguna"
-        self.dias = 0
+        // Init world
+        function init() {
+            // Generate static world
+            trees = [];
+            rocks = [];
+            for (let i = 0; i < 800; i++) {
+                trees.push({ x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, size: 20 + Math.random() * 30 });
+            }
+            for (let i = 0; i < 400; i++) {
+                rocks.push({ x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, size: 15 + Math.random() * 20 });
+            }
+            // Init pack
+            pack = [];
+            for (let i = 0; i < 2; i++) {
+                pack.push({ x: player.x + (Math.random() - 0.5) * 200, y: player.y + (Math.random() - 0.5) * 200, angle: 0, distToPlayer: 0 });
+            }
+            spawnPrey();
+        }
 
-    def pasar_dia(self):
-        self.hambre += random.randint(8, 15)
-        if self.hambre > 100:
-            self.hambre = 100
-            dano = random.randint(5, 12)
-            self.vida -= dano
+        function spawnPrey() {
+            prey = [];
+            const count = mode === 'arena' ? 1 : 15 + player.level * 2;
+            for (let i = 0; i < count; i++) {
+                let attempts = 0;
+                let px, py;
+                do {
+                    px = Math.random() * WORLD_SIZE;
+                    py = Math.random() * WORLD_SIZE;
+                    attempts++;
+                } while (attempts < 50 && distToPlayer(px, py) < 500); // Not too close
+                const typeId = Math.floor(Math.random() * PREY_TYPES.length);
+                prey.push({
+                    x: px, y: py,
+                    type: typeId,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2,
+                    hp: PREY_TYPES[typeId].hp,
+                    maxHp: PREY_TYPES[typeId].hp,
+                    fleeing: false
+                });
+            }
+        }
 
-    def estado_texto(self):
-        armadura_info = f"🛡️ {self.armadura}" if self.armadura != "Ninguna" else "Sin armadura"
-        return (
-            f"🐺 *{self.nombre}* - Día {self.dias}\n\n"
-            f"❤️ Vida: {self.vida}/{self.vida_max}\n"
-            f"🍖 Hambre: {self.hambre}/100\n"
-            f"💪 Fuerza: {self.fuerza}   ⚡ Velocidad: {self.velocidad}\n"
-            f"✨ Orbes: {self.orbes}/60\n"
-            f"{armadura_info}"
-        )
+        function distToPlayer(px, py) {
+            return Math.hypot(px - player.x, py - player.y);
+        }
 
+        // Input
+        window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-# -------------------------------
-# ESTADOS DE JUEGO POR USUARIO
-# -------------------------------
-users_game: Dict[int, dict] = {}  # user_id → {"lobo": Lobo, "state": str}
+        canvas.addEventListener('touchstart', handleTouch, { passive: false });
+        canvas.addEventListener('touchmove', handleTouch, { passive: false });
+        canvas.addEventListener('touchend', handleTouch, { passive: false });
+        canvas.addEventListener('mousedown', handleMouse);
+        canvas.addEventListener('mousemove', handleMouse);
+        canvas.addEventListener('mouseup', handleMouse);
 
+        function handleTouch(e) {
+            e.preventDefault();
+            const touches = e.touches;
+            if (touches.length === 1) {
+                const rect = canvas.getBoundingClientRect();
+                const x = touches[0].clientX - rect.left;
+                const wx = camera.x + x;
+                const wy = camera.y + (touches[0].clientY - rect.top);
+                const d = distToPlayer(wx, wy);
+                if (d < 100 && player.attackCooldown <= 0) {
+                    player.attacking = true;
+                    player.attackCooldown = 30;
+                    tg.HapticFeedback.impactOccurred('light');
+                } else {
+                    // Joystick
+                    joystickActive = true;
+                    document.getElementById('joystick').style.display = 'block';
+                    updateJoystick(x / WIDTH * 100, (HEIGHT - (touches[0].clientY - rect.top)) / HEIGHT * 100);
+                }
+            }
+        }
 
-# -------------------------------
-# TECLADOS
-# -------------------------------
-def main_menu_keyboard():
-    keyboard = [
-        [InlineKeyboardButton("🌲 Explorar", callback_data="explorar")],
-        [InlineKeyboardButton("🐇 Cazar conejo", callback_data="cazar_conejo")],
-        [InlineKeyboardButton("🦌 Cazar ciervo", callback_data="cazar_ciervo")],
-        [InlineKeyboardButton("🏞️ Río (beber/descansar)", callback_data="rio")],
-        [InlineKeyboardButton("🕯️ Santuario (deseos)", callback_data="santuario")],
-        [InlineKeyboardButton("📊 Estado", callback_data="estado")],
-        [InlineKeyboardButton("❌ Salir del juego", callback_data="salir")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+        function handleMouse(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            if (e.type === 'mousedown' && player.attackCooldown <= 0) {
+                const wx = camera.x + x;
+                const wy = camera.y + y;
+                const d = distToPlayer(wx, wy);
+                if (d < 100) {
+                    player.attacking = true;
+                    player.attackCooldown = 30;
+                }
+            }
+        }
 
+        function updateJoystick(px, py) {
+            const dx = px - 50;
+            const dy = py - 50;
+            joystickDist = Math.min(30, Math.hypot(dx, dy));
+            joystickAngle = Math.atan2(dy, dx);
+            const knob = document.getElementById('joystick-knob');
+            knob.style.left = (30 + Math.cos(joystickAngle) * joystickDist) + 'px';
+            knob.style.top = (30 + Math.sin(joystickAngle) * joystickDist) + 'px';
+        }
 
-# -------------------------------
-# COMANDOS PRINCIPALES
-# -------------------------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    username = update.effective_user.username or update.effective_user.first_name
+        // Update
+        function update() {
+            gameTime++;
 
-    if user_id not in users_game:
-        lobo = Lobo(f"{username}'s Lobo")
-        users_game[user_id] = {"lobo": lobo, "state": "menu"}
-        await update.message.reply_text(
-            f"¡Bienvenido al bosque salvaje, {update.effective_user.first_name}! 🐺\n\n"
-            "Tu leyenda comienza ahora...\n\n"
-            "Usa los botones para decidir tu destino.",
-            reply_markup=main_menu_keyboard()
-        )
-    else:
-        await update.message.reply_text(
-            "Tu lobo ya está en el bosque... continuemos la aventura.",
-            reply_markup=main_menu_keyboard()
-        )
+            // Player movement
+            player.vx = 0;
+            player.vy = 0;
+            const moveSpeed = player.speed * (player.hunger / 100);
+            if (keys['w'] || keys['arrowup']) { player.vy -= moveSpeed; }
+            if (keys['s'] || keys['arrowdown']) { player.vy += moveSpeed; }
+            if (keys['a'] || keys['arrowleft']) { player.vx -= moveSpeed; }
+            if (keys['d'] || keys['arrowright']) { player.vx += moveSpeed; }
+            if (joystickActive) {
+                player.vx += Math.cos(joystickAngle) * moveSpeed;
+                player.vy += Math.sin(joystickAngle) * moveSpeed;
+            }
 
+            // Normalize diagonal
+            const mag = Math.hypot(player.vx, player.vy);
+            if (mag > 0) {
+                player.vx = (player.vx / mag) * moveSpeed;
+                player.vy = (player.vy / mag) * moveSpeed;
+                player.angle = Math.atan2(player.vy, player.vx);
+            }
 
-# -------------------------------
-# MANEJADOR DE BOTONES
-# -------------------------------
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+            player.x = Math.max(100, Math.min(WORLD_SIZE - 100, player.x + player.vx));
+            player.y = Math.max(100, Math.min(WORLD_SIZE - 100, player.y + player.vy));
 
-    user_id = query.from_user.id
-    data = query.data
+            // Hunger drain
+            player.hunger = Math.max(0, player.hunger - 0.05);
+            if (player.hunger === 0) player.hp = Math.max(0, player.hp - 1);
 
-    if user_id not in users_game:
-        await query.edit_message_text("Usa /start para comenzar tu aventura.")
-        return
+            // Attack cooldown
+            if (player.attackCooldown > 0) player.attackCooldown--;
 
-    game = users_game[user_id]
-    lobo: Lobo = game["lobo"]
+            // Attack prey
+            if (player.attacking || player.attackCooldown > 0) {
+                prey.forEach((p, i) => {
+                    const d = Math.hypot(p.x - player.x, p.y - player.y);
+                    if (d < 80 + PREY_TYPES[p.type].size / 2) {
+                        p.hp -= 25 + player.level * 5;
+                        p.fleeing = true;
+                        if (p.hp <= 0) {
+                            player.xp += PREY_TYPES[p.type].xp * (1 + player.packSize / 10);
+                            player.hunger = Math.min(100, player.hunger + 20);
+                            prey.splice(i, 1);
+                            tg.HapticFeedback.impactOccurred('medium');
+                            if (player.xp >= player.level * 100) {
+                                player.level++;
+                                player.xp = 0;
+                                player.maxHp += 20;
+                                player.hp = player.maxHp;
+                                player.speed += 0.2;
+                                player.packSize++;
+                                document.getElementById('share').style.display = 'inline-block';
+                                tg.showAlert(`¡Nivel \( {player.level}! 🏆 Manada creció a \){player.packSize}`);
+                            }
+                        }
+                    }
+                });
+                player.attacking = false;
+            }
 
-    lobo.pasar_dia()  # Cada acción avanza un día
-    lobo.dias += 1
+            // Update pack AI
+            pack.forEach(w => {
+                const dx = player.x - w.x;
+                const dy = player.y - w.y;
+                const dist = Math.hypot(dx, dy);
+                w.distToPlayer = dist;
+                if (dist > 300) {
+                    w.x += (dx / dist) * 1.5;
+                    w.y += (dy / dist) * 1.5;
+                } else {
+                    w.x += (Math.random() - 0.5) * 1;
+                    w.y += (Math.random() - 0.5) * 1;
+                }
+                w.angle = Math.atan2(player.y - w.y, player.x - w.x);
+            });
 
-    texto = ""
+            // Update prey
+            prey.forEach(p => {
+                if (p.fleeing) {
+                    const dx = p.x - player.x;
+                    const dy = p.y - player.y;
+                    const fleeDist = Math.hypot(dx, dy);
+                    p.vx += (dx / fleeDist) * PREY_TYPES[p.type].flee * 0.1;
+                    p.vy += (dy / fleeDist) * PREY_TYPES[p.type].flee * 0.1;
+                    p.fleeing = false;
+                } else {
+                    p.vx += (Math.random() - 0.5) * 0.5;
+                    p.vy += (Math.random() - 0.5) * 0.5;
+                }
+                p.vx *= 0.95; // friction
+                p.vy *= 0.95;
+                p.x = Math.max(0, Math.min(WORLD_SIZE, p.x + p.vx));
+                p.y = Math.max(0, Math.min(WORLD_SIZE, p.y + p.vy));
+            });
 
-    if data == "estado":
-        texto = lobo.estado_texto()
+            // Camera follow
+            camera.targetX = player.x - WIDTH / 2;
+            camera.targetY = player.y - HEIGHT / 2;
+            camera.x += (camera.targetX - camera.x) * 0.1;
+            camera.y += (camera.targetY - camera.y) * 0.1;
+            camera.x = Math.max(0, Math.min(WORLD_SIZE - WIDTH, camera.x));
+            camera.y = Math.max(0, Math.min(WORLD_SIZE - HEIGHT, camera.y));
 
-    elif data == "explorar":
-        texto = "Exploras el bosque profundo...\n"
-        if random.random() < 0.012:  # ~1.2% chance de orbe
-            lobo.orbes += 1
-            texto += "¡Un **orbe místico** brilla entre las raíces!\n"
-        else:
-            texto += random.choice([
-                "Solo encuentras hojas y silencio...",
-                "Escuchas aullidos lejanos...",
-                "Un ciervo pasa corriendo, pero no lo alcanzas.",
-                "Encuentras restos frescos... +10 hambre recuperada",
-            ])
-            if "restos" in texto:
-                lobo.hambre = max(0, lobo.hambre - 10)
+            // Respawn prey if low
+            if (prey.length < 5) spawnPrey();
 
-    elif data == "cazar_conejo":
-        if random.random() < 0.72 + (lobo.velocidad * 0.012):
-            recuperacion = random.randint(18, 35)
-            lobo.hambre = max(0, lobo.hambre - recuperacion)
-            texto = f"¡Conejo cazado! Recuperas {recuperacion} de hambre."
-        else:
-            texto = "El conejo fue más rápido que tú..."
+            // UI update
+            document.getElementById('hp').textContent = player.hp;
+            document.getElementById('level').textContent = player.level;
+            document.getElementById('xp').textContent = player.xp;
+            document.getElementById('hunger').textContent = Math.floor(player.hunger);
+            document.getElementById('packSize').textContent = player.packSize;
+            document.getElementById('xp-fill').style.width = (player.xp / (player.level * 100) * 100) + '%';
 
-    elif data == "cazar_ciervo":
-        prob = 0.35 + (lobo.fuerza * 0.018)
-        if random.random() < prob:
-            recuperacion = random.randint(65, 110)
-            lobo.hambre = max(0, lobo.hambre - recuperacion)
-            texto = f"¡Ciervo abatido! +{recuperacion} hambre"
-            if random.random() < 0.15:
-                lobo.orbes += 1
-                texto += "\n¡Y un orbe aparece entre los restos!"
-        else:
-            dano = random.randint(18, 40)
-            lobo.vida -= dano
-            texto = f"El ciervo te hirió... pierdes {dano} vida"
+            // Joystick hide
+            if (!touchId && joystickActive) {
+                joystickActive = false;
+                document.getElementById('joystick').style.display = 'none';
+            }
+        }
 
-    elif data == "rio":
-        lobo.hambre = max(0, lobo.hambre - 15)
-        recuperacion_vida = random.randint(10, 25)
-        lobo.vida = min(lobo.vida_max, lobo.vida + recuperacion_vida)
-        texto = f"Bebes agua fresca y descansas...\n-15 hambre, +{recuperacion_vida} vida"
+        // Draw
+        function draw() {
+            ctx.save();
+            ctx.resetTransform();
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
-    elif data == "santuario":
-        if lobo.orbes >= 60:
-            texto = "¡Con 60 orbes invocas el deseo legendario!\n\n"
-            texto += "La Armadura Legendaria aparece ante ti...\n"
-            texto += "+180 vida máxima, +gran protección"
-            lobo.armadura = "Legendaria"
-            lobo.vida_max += 180
-            lobo.vida = lobo.vida_max
-            lobo.orbes -= 60
-        elif lobo.orbes >= 10:
-            texto = "Invocas el deseo épico...\n\n"
-            texto += "¡Armadura Épica obtenida!\n"
-            texto += "+80 vida máxima"
-            lobo.armadura = "Épica"
-            lobo.vida_max += 80
-            lobo.vida = lobo.vida_max
-            lobo.orbes -= 10
-        else:
-            texto = f"El Santuario espera tu ofrenda...\nNecesitas al menos 10 orbes.\nTienes: {lobo.orbes}"
+            // World offset
+            ctx.save();
+            ctx.translate(-camera.x, -camera.y);
 
-    elif data == "salir":
-        if user_id in users_game:
-            del users_game[user_id]
-        await query.edit_message_text(
-            "Abandonaste el bosque... tu lobo espera tu regreso.\n\n"
-            "Usa /start cuando quieras volver."
-        )
-        return
+            // Background gradient forest
+            const grad = ctx.createLinearGradient(0, camera.y, 0, camera.y + HEIGHT);
+            grad.addColorStop(0, '#90EE90');
+            grad.addColorStop(1, '#228B22');
+            ctx.fillStyle = grad;
+            ctx.fillRect(camera.x, camera.y, WIDTH, HEIGHT);
 
-    # Chequeo de muerte
-    if lobo.vida <= 0:
-        texto = "☠️ Tu lobo ha muerto...\n\nLa naturaleza reclamó tu espíritu.\n\nUsa /start para crear una nueva leyenda."
-        if user_id in users_game:
-            del users_game[user_id]
+            // River (simple wavy blue)
+            ctx.fillStyle = 'rgba(0, 100, 200, 0.6)';
+            for (let i = 0; i < WIDTH + 200; i += 100) {
+                ctx.beginPath();
+                ctx.moveTo(camera.x + i + Math.sin(gameTime * 0.01 + i * 0.01) * 20, camera.y + 1000);
+                ctx.lineTo(camera.x + i + 50 + Math.sin(gameTime * 0.01 + i * 0.01 + 0.5) * 20, camera.y + 1200);
+                ctx.lineTo(camera.x + i + 100 + Math.sin(gameTime * 0.01 + i * 0.01 + 1) * 20, camera.y + 1000);
+                ctx.fill();
+            }
 
-    await query.edit_message_text(
-        texto + "\n\n" + lobo.estado_texto(),
-        parse_mode="Markdown",
-        reply_markup=main_menu_keyboard()
-    )
+            // Trees and rocks
+            trees.forEach(t => {
+                if (t.x > camera.x - 100 && t.x < camera.x + WIDTH + 100 && t.y > camera.y - 100 && t.y < camera.y + HEIGHT + 100) {
+                    // Trunk
+                    ctx.fillStyle = '#8B4513';
+                    ctx.fillRect(t.x - 5, t.y, 10, t.size);
+                    // Leaves
+                    ctx.fillStyle = '#228B22';
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y - 10, t.size / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+            rocks.forEach(r => {
+                if (r.x > camera.x - 100 && r.x < camera.x + WIDTH + 100 && r.y > camera.y - 100 && r.y < camera.y + HEIGHT + 100) {
+                    ctx.fillStyle = '#696969';
+                    ctx.beginPath();
+                    ctx.arc(r.x, r.y, r.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
 
+            // Pack wolves
+            pack.forEach(w => {
+                drawWolf(w.x, w.y, w.angle, '#aaa', 0.8);
+            });
 
-# -------------------------------
-# INICIO DEL BOT
-# -------------------------------
-def main():
-    # Obtener token desde variables de entorno (mejor para Replit)
-    TOKEN = os.getenv("TOKEN")
-    if not TOKEN:
-        print("ERROR: No se encontró el TOKEN en las variables de entorno.")
-        print("En Replit: ve a Tools → Secrets → agrega TOKEN = tu_token_real")
-        return
+            // Prey HP bars
+            prey.forEach(p => {
+                const type = PREY_TYPES[p.type];
+                drawAnimal(p.x, p.y, type.emoji, type.size);
+                // HP bar
+                const barW = type.size * 2;
+                ctx.fillStyle = 'red';
+                ctx.fillRect(p.x - barW / 2, p.y - type.size - 15, barW, 4);
+                ctx.fillStyle = 'lime';
+                ctx.fillRect(p.x - barW / 2, p.y - type.size - 15, barW * (p.hp / p.maxHp), 4);
+            });
 
-    application = Application.builder().token(TOKEN).build()
+            // Player wolf
+            drawWolf(player.x, player.y, player.angle, '#fff', 1.2);
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button_handler))
+            // Attack effect
+            if (player.attackCooldown > 0) {
+                ctx.save();
+                ctx.translate(player.x, player.y);
+                ctx.rotate(player.angle);
+                ctx.fillStyle = `rgba(255, 165, 0, ${player.attackCooldown / 30})`;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(60, 0);
+                ctx.lineTo(20, -20);
+                ctx.fill();
+                ctx.restore();
+            }
 
-    print("Bot iniciado... esperando mensajes")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+            ctx.restore();
 
+            // Minimap
+            drawMinimap();
 
-if __name__ == "__main__":
-    main()
+            ctx.restore();
+        }
+
+        function drawWolf(x, y, angle, color, scale) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.scale(scale, scale);
+            // Body
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 35, 20, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Head
+            ctx.beginPath();
+            ctx.ellipse(40, -5, 20, 18, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Ears
+            ctx.beginPath();
+            ctx.moveTo(45, -20);
+            ctx.lineTo(50, -35);
+            ctx.lineTo(55, -20);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(35, -18);
+            ctx.lineTo(30, -30);
+            ctx.lineTo(25, -18);
+            ctx.fill();
+            // Tail
+            ctx.beginPath();
+            ctx.ellipse(-25, 5, 15, 8, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            // Eyes
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(45, -8, 4, 0, Math.PI * 2);
+            ctx.arc(52, -8, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(46, -8, 2, 0, Math.PI * 2);
+            ctx.arc(53, -8, 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawAnimal(x, y, emoji, size) {
+            ctx.font = `${size * 2}px serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(emoji, x, y);
+            ctx.font = '12px Arial';
+        }
+
+        function drawMinimap() {
+            const mm = document.getElementById('minimap');
+            const mmCtx = mm.getContext ? mm.getContext('2d') : null; // Fallback if no canvas
+            if (!mmCtx) return;
+            mmCtx.clearRect(0, 0, 120, 120);
+            const scale = 120 / WORLD_SIZE;
+            // World border
+            mmCtx.strokeStyle = '#fff';
+            mmCtx.strokeRect(0, 0, 120, 120);
+            // Player
+            mmCtx.fillStyle = '#ff0';
+            mmCtx.beginPath();
+            mmCtx.arc((player.x * scale) + 2, (player.y * scale) + 2, 4, 0, Math.PI * 2);
+            mmCtx.fill();
+            // Pack
+            mmCtx.fillStyle = '#fff';
+            pack.forEach(w => {
+                mmCtx.beginPath();
+                mmCtx.arc((w.x * scale), (w.y * scale), 2, 0, Math.PI * 2);
+                mmCtx.fill();
+            });
+            // Prey
+            mmCtx.fillStyle = '#f90';
+            prey.forEach(p => {
+                mmCtx.beginPath();
+                mmCtx.arc((p.x * scale), (p.y * scale), 1.5, 0, Math.PI * 2);
+                mmCtx.fill();
+            });
+        }
+
+        // Buttons
+        document.getElementById('arenaBtn').onclick = () => {
+            mode = 'arena';
+            document.getElementById('mode').textContent = 'Modo: Arena PvP ⚔️';
+            player.x = WORLD_SIZE / 2;
+            player.y = WORLD_SIZE / 2;
+            spawnPrey(); // Big prey in arena
+            tg.HapticFeedback.impactOccurred('heavy');
+        };
+        document.getElementById('huntBtn').onclick = () => {
+            mode = 'hunt';
+            document.getElementById('mode').textContent = 'Modo: Caza 🦌';
+            spawnPrey();
+            tg.HapticFeedback.impactOccurred('light');
+        };
+        document.getElementById('share').onclick = () => {
+            tg.shareUrl(`\( {tg.initUrl}?level= \){player.level}`);
+            document.getElementById('share').style.display = 'none';
+        };
+
+        // Loop
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        init();
+        loop();
+    </script>
+</body>
+</html>
