@@ -3,31 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wolf RPG: Full Body</title>
+    <title>Wolf RPG: Real Evolution</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
         #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
-        .hud-v3 { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); border-left: 5px solid #ffd700; padding: 15px; border-radius: 0 15px 15px 0; pointer-events: auto; }
-        .bar-container { width: 150px; height: 10px; background: #333; border-radius: 5px; margin-top: 8px; overflow: hidden; }
-        #exp-fill { height: 100%; background: #00ffcc; width: 0%; transition: width 0.3s; }
-        #altar-btn { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background: #ffd700; border: none; padding: 15px 40px; border-radius: 10px; font-weight: bold; pointer-events: auto; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .hud-modern { position: absolute; top: 15px; left: 15px; background: rgba(0,20,0,0.9); border-left: 4px solid #00ffcc; padding: 12px; border-radius: 0 10px 10px 0; pointer-events: auto; }
+        .xp-bg { width: 140px; height: 6px; background: #222; margin-top: 5px; border-radius: 3px; overflow: hidden; }
+        #xp-fill { height: 100%; background: #00ffcc; width: 0%; transition: width 0.3s; }
+        #altar-btn { position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%); background: #ffd700; color: #000; border: none; padding: 12px 35px; border-radius: 5px; cursor: pointer; pointer-events: auto; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div id="ui">
-    <div class="hud-v3">
-        <div style="color: white; font-weight: bold;" id="lvl-txt">WOLF LVL 1</div>
-        <div style="color: #ffd700; font-size: 11px;" id="orb-txt">MAPA: 1 | ORBES: 0</div>
-        <div class="bar-container"><div id="exp-fill"></div></div>
+    <div class="hud-modern">
+        <div style="color: white; font-weight: bold; font-size: 14px;" id="lvl-txt">ALFA LVL 1</div>
+        <div style="color: #ffd700; font-size: 10px;" id="orb-txt">MAPA: 1 | ORBES: 0</div>
+        <div class="xp-bg"><div id="xp-fill"></div></div>
     </div>
-    <button id="altar-btn" onclick="checkAltar()">ALTAR SAGRADO</button>
+    <button id="altar-btn" onclick="alert('ALTAR: Necesitas 10 Orbes para deseo Épico o 60 para Legendario. (Disponibles al Lvl 20)')">ALTAR SAGRADO</button>
 </div>
 
 <script>
-// USAMOS UNA NUEVA VERSIÓN DE DATOS PARA FORZAR LA ACTUALIZACIÓN
-let data = JSON.parse(localStorage.getItem('wolf_v11_body')) || { level: 1, exp: 0, orbes: 0, mapa: 1, vel: 280 };
+// "v12_force" obliga a Telegram a resetear la memoria vieja
+let data = JSON.parse(localStorage.getItem('wolf_v12_force')) || { level: 1, exp: 0, orbes: 0, mapa: 1, vel: 280 };
 
 const config = {
     type: Phaser.AUTO,
@@ -38,34 +38,33 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
-let player, animals;
+let player, preys;
 
 function preload() {
-    // Fondo de hierba real
-    this.load.image('grass', 'https://labs.phaser.io/assets/textures/grass.png');
-    // LOBO DE CUERPO COMPLETO (Sprite)
-    this.load.image('wolf_body', 'https://img.icons8.com/color/96/wolf.png'); 
-    // PREY (Ciervo)
-    this.load.image('prey', 'https://img.icons8.com/color/48/deer.png');
+    this.load.image('forest', 'https://labs.phaser.io/assets/textures/tileset-grass.png');
+    // LOBO CUERPO COMPLETO REAL
+    this.load.image('wolf_full', 'https://img.icons8.com/color/144/wolf.png');
+    // CIERVO REAL
+    this.load.image('deer', 'https://img.icons8.com/color/96/deer.png');
 }
 
 function create() {
-    this.add.tileSprite(0, 0, 8000, 8000, 'grass').setOrigin(0).setAlpha(0.4);
+    this.add.tileSprite(0, 0, 8000, 8000, 'forest').setOrigin(0).setAlpha(0.5);
     this.cameras.main.setBounds(0, 0, 4000, 4000);
     this.physics.world.setBounds(0, 0, 4000, 4000);
 
-    // Configuración del Lobo (Cuerpo completo)
-    player = this.physics.add.sprite(2000, 2000, 'wolf_body');
-    player.setOrigin(0.5, 0.5); // Centro real para rotación suave
-    player.setScale(1.2);
+    // Jugador: Cuerpo completo y rotación mejorada
+    player = this.physics.add.sprite(2000, 2000, 'wolf_full');
+    player.setOrigin(0.5, 0.5); // Gira desde el centro del cuerpo
+    player.setScale(0.8);
     player.setCollideWorldBounds(true);
     this.cameras.main.startFollow(player, true, 0.1, 0.1);
 
-    animals = this.physics.add.group();
-    for(let i=0; i<20; i++) spawnAnimal(this);
+    preys = this.physics.add.group();
+    for(let i=0; i<25; i++) spawnPrey(this);
 
-    // SISTEMA DE CAZA Y REGLAS DE ORBES
-    this.physics.add.overlap(player, animals, (p, animal) => {
+    // Sistema de Caza y Orbes
+    this.physics.add.overlap(player, preys, (p, animal) => {
         animal.destroy();
         this.cameras.main.shake(100, 0.01);
         
@@ -76,54 +75,47 @@ function create() {
             data.mapa = Math.floor(data.level/5) + 1;
         }
 
-        // TUS REGLAS: Orbes aparecen en Mapa 4 o Nivel 20
+        // TUS REGLAS: Orbes aparecen en Nivel 20 o Mapa 4
         if(data.level >= 20 || data.mapa >= 4) {
-            // Probabilidad de encontrar orbe cazando
-            if(Math.random() < 0.2) {
-                data.orbes++;
-            }
+            if(Math.random() < 0.25) data.orbes++;
         }
 
-        updateHUD();
-        spawnAnimal(this);
+        saveData();
+        spawnPrey(this);
     }, null, this);
 
-    updateHUD();
+    saveData();
 }
 
 function update() {
     if (this.input.activePointer.isDown) {
         this.physics.moveToObject(player, this.input.activePointer, data.vel);
         
-        // ROTACIÓN MEJORADA: El cuerpo mira hacia donde camina
+        // ROTACIÓN NATURAL: Mira a donde va sin girar "feo"
         let angle = Phaser.Math.Angle.Between(player.x, player.y, this.input.activePointer.worldX, this.input.activePointer.worldY);
         player.rotation = Phaser.Math.Angle.RotateTo(player.rotation, angle + 1.5, 0.1);
         
-        // Efecto de caminar (escala)
-        player.setScale(1.2 + Math.sin(this.time.now / 100) * 0.05);
+        // Animación de correr
+        player.setScale(0.8 + Math.sin(this.time.now / 100) * 0.03);
     } else {
         player.body.setVelocity(0);
-        player.setScale(1.2);
+        player.setScale(0.8);
     }
 }
 
-function spawnAnimal(scene) {
+function spawnPrey(scene) {
     let x = Phaser.Math.Between(100, 3900);
     let y = Phaser.Math.Between(100, 3900);
-    let a = scene.physics.add.sprite(x, y, 'prey');
-    a.setScale(0.8);
-    animals.add(a);
+    let d = scene.physics.add.sprite(x, y, 'deer');
+    d.setScale(0.5);
+    preys.add(d);
 }
 
-function updateHUD() {
-    localStorage.setItem('wolf_v11_body', JSON.stringify(data));
-    document.getElementById('lvl-txt').innerText = `WOLF LVL ${data.level}`;
+function saveData() {
+    localStorage.setItem('wolf_v12_force', JSON.stringify(data));
+    document.getElementById('lvl-txt').innerText = `ALFA LVL ${data.level}`;
     document.getElementById('orb-txt').innerText = `MAPA: ${data.mapa} | ORBES: ${data.orbes}`;
-    document.getElementById('exp-fill').style.width = data.exp + '%';
-}
-
-function checkAltar() {
-    alert(`ALTAR SAGRADO\n\nOrbes: ${data.orbes}\n\n- 10 Orbes: Deseo Épico\n- 60 Orbes: Deseo Legendario\n\n(Aparecen al Nivel 20 o Mapa 4)`);
+    document.getElementById('xp-fill').style.width = data.exp + '%';
 }
 </script>
 </body>
