@@ -1,275 +1,234 @@
-# lobo_rpg_simulator_v4.py
-# Simulador RPG Lobo - Orbes para Deseos de Armaduras Épicas/Legendarias
+# bot.py
+# Bot RPG del Lobo para Telegram - Versión completa para Replit / hosting
+# Usa python-telegram-bot v20+ (en Replit instalar con Packages)
 
+import logging
 import random
-import time
 import os
+from typing import Dict
 
-# ────────────────────────────────────────────────
-#                 ORBES MÍSTICOS
-#       (solo sirven para acumular y pedir deseos)
-# ────────────────────────────────────────────────
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+)
 
-ORBES = [
-    "Orbe de Viento Silencioso",
-    "Orbe de Sangre Lunar",
-    "Orbe del Aullido Ancestral",
-    "Orbe de Ceniza Eterna",
-    "Orbe del Colmillo Fracturado",
-    "Orbe del Primer Lobo",
-    "Orbe del Bosque Eterno",
-    "Orbe de las Estrellas Caídas",
-    "Orbe de la Niebla Eterna",
-    "Orbe del Fuego Primordial"
-]
+# Configuración de logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-# ────────────────────────────────────────────────
-#                    CLASE LOBO
-# ────────────────────────────────────────────────
-
+# -------------------------------
+# CLASE LOBO (versión simplificada y completa)
+# -------------------------------
 class Lobo:
-    def __init__(self, nombre="Sin nombre"):
+    def __init__(self, nombre="Lobo Sin Nombre"):
         self.nombre = nombre
-        self.nivel = 1
-        self.xp = 0
-        self.xp_para_subir = 100
         self.vida = 100
         self.vida_max = 100
         self.hambre = 0
         self.fuerza = 10
         self.velocidad = 10
-        self.dias_vividos = 0
-        
-        self.orbes = 0                      # Contador total de orbes acumulados
-        self.armadura = "Ninguna"           # Estado de la armadura
-        self.defensa = 0                    # Puntos de defensa
-        self.resistencia_daño = 0           # % de reducción de daño
-        self.regeneracion_extra = 0         # regen adicional por día
-
-    def mostrar_estado(self):
-        print("\n" + "═" * 70)
-        print(f"🐺 {self.nombre.upper()} - Nivel {self.nivel}  |  Día {self.dias_vividos}")
-        print(f"Vida:           {self.vida}/{self.vida_max}")
-        print(f"Hambre:         {self.hambre}/100")
-        print(f"Fuerza:         {self.fuerza}")
-        print(f"Velocidad:      {self.velocidad}")
-        print(f"Defensa:        {self.defensa}")
-        print(f"Resist. daño:   {self.resistencia_daño}%")
-        print(f"Regen extra/día:{self.regeneracion_extra}")
-        print(f"Armadura:       {self.armadura}")
-        print(f"Orbes acumulados: {self.orbes}/60")
-        print("═" * 70)
+        self.orbes = 0
+        self.armadura = "Ninguna"
+        self.dias = 0
 
     def pasar_dia(self):
-        hambre_aumento = random.randint(10, 18)
-        self.hambre += hambre_aumento
-        
-        if self.hambre >= 100:
-            dano = random.randint(6, 14)
-            dano_reducido = int(dano * (1 - self.resistencia_daño / 100))
-            self.vida -= dano_reducido
-            print(f"¡Hambre extrema! Pierdes {dano_reducido} vida (defensa aplicada)")
+        self.hambre += random.randint(8, 15)
+        if self.hambre > 100:
             self.hambre = 100
-        
-        # Regeneración total
-        regen_total = self.regeneracion_extra
-        if regen_total > 0:
-            regen = min(regen_total, self.vida_max - self.vida)
-            self.vida += regen
-            if regen > 0:
-                print(f"Regeneración: +{regen} vida")
+            dano = random.randint(5, 12)
+            self.vida -= dano
 
-    def encontrar_orbe(self):
-        if random.random() > 0.008:  # ~0.8% chance base de encontrar un orbe
-            return
-            
-        self.orbes += 1
-        orbe_nombre = random.choice(ORBES)
-        print("\n" + "✨" * 12)
-        print(f"¡ORBES MÍSTICO DESCUBIERTO!")
-        print(f"→ {orbe_nombre}")
-        print(f"   Orbes acumulados ahora: {self.orbes}")
-        print("✨" * 12)
+    def estado_texto(self):
+        armadura_info = f"🛡️ {self.armadura}" if self.armadura != "Ninguna" else "Sin armadura"
+        return (
+            f"🐺 *{self.nombre}* - Día {self.dias}\n\n"
+            f"❤️ Vida: {self.vida}/{self.vida_max}\n"
+            f"🍖 Hambre: {self.hambre}/100\n"
+            f"💪 Fuerza: {self.fuerza}   ⚡ Velocidad: {self.velocidad}\n"
+            f"✨ Orbes: {self.orbes}/60\n"
+            f"{armadura_info}"
+        )
 
-    def pedir_deseo_en_santuario(self):
-        print("\n" + "🌌" * 10)
-        print("Estás frente al Altar Ancestral del Santuario...")
-        print(f"Orbes disponibles: {self.orbes}")
-        print("\nDeseos disponibles:")
-        print("  1. Deseo Épico  → Armadura Épica     (cuesta 10 orbes)")
-        print("  2. Deseo Legendario → Armadura Legendaria (cuesta 60 orbes)")
-        print("  0. Cancelar (salir sin pedir nada)")
-        
-        try:
-            eleccion = int(input("\n¿Qué deseo vas a pedir? → "))
-            
-            if eleccion == 1:
-                if self.orbes >= 10:
-                    self.orbes -= 10
-                    self.armadura = "Armadura Épica"
-                    self.vida_max += 80
-                    self.vida = self.vida_max
-                    self.defensa += 35
-                    self.resistencia_daño += 20
-                    print("\n¡EL BOSQUE RESPONDIÓ!")
-                    print("La Armadura Épica se materializa alrededor tuyo...")
-                    print("+80 vida máxima, +35 defensa, +20% resistencia al daño")
-                else:
-                    print("No tienes suficientes orbes... necesitas 10")
-                    
-            elif eleccion == 2:
-                if self.orbes >= 60:
-                    self.orbes -= 60
-                    self.armadura = "Armadura Legendaria"
-                    self.vida_max += 180
-                    self.vida = self.vida_max
-                    self.defensa += 70
-                    self.resistencia_daño += 40
-                    self.regeneracion_extra += 15
-                    print("\n¡EL PODER SUPREMO DEL BOSQUE TE ENVUELVE!")
-                    print("La Armadura Legendaria brilla con luz eterna...")
-                    print("+180 vida máxima, +70 defensa, +40% resistencia, +15 regen/día")
-                else:
-                    print("Aún no estás listo... necesitas 60 orbes para el deseo legendario")
-                    
-            else:
-                print("Decides retirarte del altar por ahora...")
-                
-        except:
-            print("El altar permanece en silencio... decides no pedir nada.")
-        
-        print("🌌" * 10)
 
-# ────────────────────────────────────────────────
-#                   EVENTOS Y CAZAS
-# ────────────────────────────────────────────────
+# -------------------------------
+# ESTADOS DE JUEGO POR USUARIO
+# -------------------------------
+users_game: Dict[int, dict] = {}  # user_id → {"lobo": Lobo, "state": str}
 
-def cazar_conejo(lobo):
-    if random.random() < 0.75 + (lobo.velocidad * 0.015):
-        recuperacion = random.randint(22, 40)
-        lobo.hambre = max(0, lobo.hambre - recuperacion)
-        lobo.xp += random.randint(35, 65)
-        print(f"¡Conejo cazado! +{recuperacion} hambre recuperada")
-    else:
-        print("El conejo fue más rápido...")
 
-def cazar_ciervo(lobo):
-    prob = 0.35 + (lobo.fuerza * 0.02) + (lobo.nivel * 0.065)
-    if random.random() < prob:
-        recuperacion = random.randint(70, 120)
-        lobo.hambre = max(0, lobo.hambre - recuperacion)
-        lobo.xp += random.randint(100, 200)
-        print(f"¡Ciervo majestuoso abatido! +{recuperacion} hambre, +XP épico")
-        
-        if random.random() < 0.45:
-            lobo.encontrar_orbe()
-    else:
-        dano = random.randint(20, 45)
-        dano_reducido = int(dano * (1 - lobo.resistencia_daño / 100))
-        lobo.vida -= dano_reducido
-        print(f"El ciervo te golpeó... pierdes {dano_reducido} vida (defensa aplicada)")
-
-def evento_aleatorio(lobo):
-    eventos = [
-        ("Encuentras restos de una gran presa", lambda: lobo.hambre -= random.randint(40, 70)),
-        ("Descansas en un lugar místico", lambda: setattr(lobo, 'vida', min(lobo.vida_max, lobo.vida + 50))),
-        ("¡Encuentro peligroso con un oso!", lambda: setattr(lobo, 'vida', lobo.vida - int(random.randint(40, 75) * (1 - lobo.resistencia_daño / 100)))),
-        ("Sientes una energía poderosa...", lobo.encontrar_orbe),
+# -------------------------------
+# TECLADOS
+# -------------------------------
+def main_menu_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("🌲 Explorar", callback_data="explorar")],
+        [InlineKeyboardButton("🐇 Cazar conejo", callback_data="cazar_conejo")],
+        [InlineKeyboardButton("🦌 Cazar ciervo", callback_data="cazar_ciervo")],
+        [InlineKeyboardButton("🏞️ Río (beber/descansar)", callback_data="rio")],
+        [InlineKeyboardButton("🕯️ Santuario (deseos)", callback_data="santuario")],
+        [InlineKeyboardButton("📊 Estado", callback_data="estado")],
+        [InlineKeyboardButton("❌ Salir del juego", callback_data="salir")]
     ]
-    evento = random.choice(eventos)
-    print(f"\nEvento: {evento[0]}")
-    if callable(evento[1]):
-        evento[1]()
+    return InlineKeyboardMarkup(keyboard)
 
-# ────────────────────────────────────────────────
-#                    MENÚ PRINCIPAL
-# ────────────────────────────────────────────────
 
-def mostrar_menu():
-    print("\n¿Qué harás ahora?")
-    print(" 1  - Explorar el bosque")
-    print(" 2  - Cazar conejo")
-    print(" 3  - Cazar ciervo (mayor chance de orbes)")
-    print(" 4  - Beber y descansar en el río")
-    print(" 5  - Ir al Santuario de la Cueva (pedir deseos)")
-    print(" 6  - Aullar desafiante")
-    print(" e  - Ver estado completo")
-    print(" q  - Salir del juego")
-    return input("\n→ ").strip().lower()
+# -------------------------------
+# COMANDOS PRINCIPALES
+# -------------------------------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name
 
-# ────────────────────────────────────────────────
-#                   JUEGO PRINCIPAL
-# ────────────────────────────────────────────────
+    if user_id not in users_game:
+        lobo = Lobo(f"{username}'s Lobo")
+        users_game[user_id] = {"lobo": lobo, "state": "menu"}
+        await update.message.reply_text(
+            f"¡Bienvenido al bosque salvaje, {update.effective_user.first_name}! 🐺\n\n"
+            "Tu leyenda comienza ahora...\n\n"
+            "Usa los botones para decidir tu destino.",
+            reply_markup=main_menu_keyboard()
+        )
+    else:
+        await update.message.reply_text(
+            "Tu lobo ya está en el bosque... continuemos la aventura.",
+            reply_markup=main_menu_keyboard()
+        )
 
-def main():
-    os.system('cls' if os.name == 'nt' else 'clear')
-    print("╔════════════════════════════════════════════════════╗")
-    print("║     LOBO SALVAJE RPG - Orbes y Deseos Legendarios    ║")
-    print("╚════════════════════════════════════════════════════╝\n")
 
-    nombre = input("Nombre de tu lobo: ").strip() or "Eclipsor"
-    lobo = Lobo(nombre)
-    lobo.mostrar_estado()
+# -------------------------------
+# MANEJADOR DE BOTONES
+# -------------------------------
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-    while lobo.vida > 0:
-        opcion = mostrar_menu()
+    user_id = query.from_user.id
+    data = query.data
 
-        lobo.dias_vividos += 1
-        lobo.pasar_dia()
+    if user_id not in users_game:
+        await query.edit_message_text("Usa /start para comenzar tu aventura.")
+        return
 
-        if opcion == "1":
-            evento_aleatorio(lobo)
-        elif opcion == "2":
-            cazar_conejo(lobo)
-        elif opcion == "3":
-            cazar_ciervo(lobo)
-        elif opcion == "4":
-            lobo.hambre = max(0, lobo.hambre - 18)
-            lobo.vida = min(lobo.vida_max, lobo.vida + random.randint(10, 25))
-            print("Agua y descanso... mejoras moderadas")
-        elif opcion == "5":
-            lobo.pedir_deseo_en_santuario()
-        elif opcion == "6":
-            if random.random() < 0.60 + (lobo.nivel * 0.02):
-                print("¡Un rival responde a tu aullido!")
-                if random.random() < 0.55:
-                    lobo.xp += random.randint(90, 170)
-                    print("¡Victoria! +XP")
-                    if random.random() < 0.25:
-                        lobo.encontrar_orbe()
-                else:
-                    dano = random.randint(25, 55)
-                    dano_reducido = int(dano * (1 - lobo.resistencia_daño / 100))
-                    lobo.vida -= dano_reducido
-                    print(f"¡Heridas graves! Pierdes {dano_reducido} vida")
-            else:
-                print("El bosque permanece en silencio...")
-        elif opcion == "e":
-            pass
-        elif opcion in ["q", "salir"]:
-            break
+    game = users_game[user_id]
+    lobo: Lobo = game["lobo"]
 
-        if lobo.xp >= lobo.xp_para_subir:
-            lobo.nivel += 1
-            lobo.xp = 0
-            lobo.xp_para_subir = int(lobo.xp_para_subir * 1.75)
-            lobo.vida_max += random.randint(25, 40)
+    lobo.pasar_dia()  # Cada acción avanza un día
+    lobo.dias += 1
+
+    texto = ""
+
+    if data == "estado":
+        texto = lobo.estado_texto()
+
+    elif data == "explorar":
+        texto = "Exploras el bosque profundo...\n"
+        if random.random() < 0.012:  # ~1.2% chance de orbe
+            lobo.orbes += 1
+            texto += "¡Un **orbe místico** brilla entre las raíces!\n"
+        else:
+            texto += random.choice([
+                "Solo encuentras hojas y silencio...",
+                "Escuchas aullidos lejanos...",
+                "Un ciervo pasa corriendo, pero no lo alcanzas.",
+                "Encuentras restos frescos... +10 hambre recuperada",
+            ])
+            if "restos" in texto:
+                lobo.hambre = max(0, lobo.hambre - 10)
+
+    elif data == "cazar_conejo":
+        if random.random() < 0.72 + (lobo.velocidad * 0.012):
+            recuperacion = random.randint(18, 35)
+            lobo.hambre = max(0, lobo.hambre - recuperacion)
+            texto = f"¡Conejo cazado! Recuperas {recuperacion} de hambre."
+        else:
+            texto = "El conejo fue más rápido que tú..."
+
+    elif data == "cazar_ciervo":
+        prob = 0.35 + (lobo.fuerza * 0.018)
+        if random.random() < prob:
+            recuperacion = random.randint(65, 110)
+            lobo.hambre = max(0, lobo.hambre - recuperacion)
+            texto = f"¡Ciervo abatido! +{recuperacion} hambre"
+            if random.random() < 0.15:
+                lobo.orbes += 1
+                texto += "\n¡Y un orbe aparece entre los restos!"
+        else:
+            dano = random.randint(18, 40)
+            lobo.vida -= dano
+            texto = f"El ciervo te hirió... pierdes {dano} vida"
+
+    elif data == "rio":
+        lobo.hambre = max(0, lobo.hambre - 15)
+        recuperacion_vida = random.randint(10, 25)
+        lobo.vida = min(lobo.vida_max, lobo.vida + recuperacion_vida)
+        texto = f"Bebes agua fresca y descansas...\n-15 hambre, +{recuperacion_vida} vida"
+
+    elif data == "santuario":
+        if lobo.orbes >= 60:
+            texto = "¡Con 60 orbes invocas el deseo legendario!\n\n"
+            texto += "La Armadura Legendaria aparece ante ti...\n"
+            texto += "+180 vida máxima, +gran protección"
+            lobo.armadura = "Legendaria"
+            lobo.vida_max += 180
             lobo.vida = lobo.vida_max
-            lobo.fuerza += random.randint(6, 14)
-            lobo.velocidad += random.randint(5, 12)
-            print(f"\n★ NIVEL {lobo.nivel} ALCANZADO ★")
+            lobo.orbes -= 60
+        elif lobo.orbes >= 10:
+            texto = "Invocas el deseo épico...\n\n"
+            texto += "¡Armadura Épica obtenida!\n"
+            texto += "+80 vida máxima"
+            lobo.armadura = "Épica"
+            lobo.vida_max += 80
+            lobo.vida = lobo.vida_max
+            lobo.orbes -= 10
+        else:
+            texto = f"El Santuario espera tu ofrenda...\nNecesitas al menos 10 orbes.\nTienes: {lobo.orbes}"
 
-        lobo.mostrar_estado()
-        time.sleep(0.5)
+    elif data == "salir":
+        if user_id in users_game:
+            del users_game[user_id]
+        await query.edit_message_text(
+            "Abandonaste el bosque... tu lobo espera tu regreso.\n\n"
+            "Usa /start cuando quieras volver."
+        )
+        return
 
-    print("\n" + "═" * 80)
-    print(f"  La leyenda de {lobo.nombre} terminó tras {lobo.dias_vividos} días...")
-    if lobo.armadura != "Ninguna":
-        print(f"  Partió portando la {lobo.armadura}")
-    print("═" * 80)
+    # Chequeo de muerte
+    if lobo.vida <= 0:
+        texto = "☠️ Tu lobo ha muerto...\n\nLa naturaleza reclamó tu espíritu.\n\nUsa /start para crear una nueva leyenda."
+        if user_id in users_game:
+            del users_game[user_id]
+
+    await query.edit_message_text(
+        texto + "\n\n" + lobo.estado_texto(),
+        parse_mode="Markdown",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+# -------------------------------
+# INICIO DEL BOT
+# -------------------------------
+def main():
+    # Obtener token desde variables de entorno (mejor para Replit)
+    TOKEN = os.getenv("TOKEN")
+    if not TOKEN:
+        print("ERROR: No se encontró el TOKEN en las variables de entorno.")
+        print("En Replit: ve a Tools → Secrets → agrega TOKEN = tu_token_real")
+        return
+
+    application = Application.builder().token(TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button_handler))
+
+    print("Bot iniciado... esperando mensajes")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\nEl lobo se desvanece entre la niebla del bosque...\n")
+    main()
