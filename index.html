@@ -3,217 +3,198 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wolf Online Simulator MMO</title>
+    <title>Wolf Simulator 3D MMO</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root { --gold: #daa520; --bg: #0a0f08; }
-        body { margin: 0; padding: 0; background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; }
-        canvas { display: block; filter: saturate(1.2) contrast(1.1); }
-
-        /* HUD Realista */
-        #gui { position: fixed; top: 0; left: 0; width: 100%; pointer-events: none; z-index: 10; }
-        .stats-box { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 5px; border-left: 4px solid var(--gold); }
-        .orb-panel { position: absolute; top: 15px; right: 15px; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 5px; color: var(--gold); font-weight: bold; display: none; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; }
+        
+        /* Interfaz de Usuario (HUD) */
+        #hud { position: fixed; top: 0; left: 0; width: 100%; pointer-events: none; z-index: 10; color: white; text-shadow: 2px 2px 4px #000; }
+        .stats { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 10px; border-left: 5px solid #daa520; }
+        #orb-info { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 10px; color: #ffd700; display: none; }
         
         /* Controles */
-        .controls { position: fixed; bottom: 25px; right: 25px; display: flex; gap: 15px; z-index: 20; }
-        .action-btn { width: 75px; height: 75px; background: rgba(0,0,0,0.5); border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; pointer-events: auto; }
-        
-        /* Joystick Virtual */
-        #joy-outer { position: fixed; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); border-radius: 50%; z-index: 20; }
-        #joy-inner { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: white; border-radius: 50%; opacity: 0.6; }
+        #joystick-area { position: fixed; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); z-index: 20; }
+        #joystick-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #fff; border-radius: 50%; opacity: 0.7; }
+        #attack-btn { position: fixed; bottom: 50px; right: 40px; width: 90px; height: 90px; background: rgba(139,0,0,0.8); border: 3px solid #fff; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 40px; z-index: 20; cursor: pointer; }
 
-        /* Pantalla de Inicio / Modos */
-        #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; padding: 20px; }
-        .menu-btn { background: var(--gold); color: black; border: none; padding: 15px 40px; margin: 10px; font-weight: bold; border-radius: 30px; font-size: 18px; width: 250px; cursor: pointer; }
+        #loading { position: fixed; inset: 0; background: #0b1a07; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; color: white; text-align: center; }
     </style>
 </head>
 <body>
 
-    <div id="overlay">
-        <h1 style="color:var(--gold); font-size: 40px; margin-bottom: 5px;">WOLF MMO</h1>
-        <p>Simulador de Rol Multijugador Realista</p>
-        <button class="menu-btn" onclick="startGame('hunt')">MODO CACERÍA (CO-OP)</button>
-        <button class="menu-btn" onclick="startGame('pvp')" style="background:#8b0000; color:white;">ARENA BATTLE (PVP)</button>
-        <p style="font-size: 12px; opacity: 0.7;">Toca para elegir tu destino como Alfa</p>
+    <div id="loading">
+        <h1 style="color:#daa520">WOLF SIMULATOR 3D</h1>
+        <p>Cargando Entorno Realista...</p>
+        <button onclick="iniciar()" style="padding: 15px 30px; background: #daa520; border: none; border-radius: 20px; font-weight: bold; margin-top: 20px;">ENTRAR AL BOSQUE</button>
     </div>
 
-    <div id="gui">
-        <div class="stats-box">
-            <div id="p-name">Lobo Alfa</div>
-            <div style="font-size: 12px;">Nivel: <span id="lv">1</span> | Mapa: <span id="map-num">1</span></div>
-            <div style="width: 120px; height: 4px; background: #333; margin-top: 5px;">
-                <div id="xp-bar" style="width: 0%; height: 100%; background: var(--gold);"></div>
-            </div>
+    <div id="hud">
+        <div class="stats">
+            <b>LOBO ALFA</b><br>
+            Nivel: <span id="lv">1</span> | Mapa: <span id="mapa">1</span>
         </div>
-        <div class="orb-panel" id="orb-display">✨ Orbes: <span id="orb-count">0</span></div>
+        <div id="orb-info">✨ Orbes: <span id="orb-count">0</span>/60</div>
     </div>
 
-    <div id="joy-outer"><div id="joy-inner"></div></div>
-
-    <div class="controls">
-        <div class="action-btn" id="attack-btn">🐾</div>
-        <div class="action-btn" id="map-btn" style="border-color: #27ae60; font-size: 24px;">🗺️</div>
-    </div>
-
-    <canvas id="gameCanvas"></canvas>
+    <div id="joystick-area"><div id="joystick-stick"></div></div>
+    <div id="attack-btn">🐾</div>
 
 <script>
     const tg = window.Telegram.WebApp;
     tg.ready();
-    tg.expand();
 
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    
-    // Variables de Juego
-    let worldSize = 5000;
-    let player = { x: 2500, y: 2500, lv: 1, xp: 0, orbes: 0, mapa: 1, angle: 0, speed: 5 };
-    let camera = { x: 0, y: 0 };
-    let enemies = [];
-    let joystick = { active: false, x: 0, y: 0, angle: 0 };
-    let gameActive = false;
+    let scene, camera, renderer, wolf, floor;
+    let joystick = { active: false, x: 0, y: 0 };
+    let entities = [];
+    let playerStats = { lv: 1, xp: 0, orbes: 0, mapa: 1 };
 
-    function startGame(mode) {
-        document.getElementById('overlay').style.display = 'none';
-        gameActive = true;
-        tg.HapticFeedback.notificationOccurred('success');
-        spawnEnemies();
-        requestAnimationFrame(gameLoop);
+    function iniciar() {
+        document.getElementById('loading').style.display = 'none';
+        init3D();
+        animate();
     }
 
-    function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resize);
-    resize();
+    function init3D() {
+        // Escena y Cámara
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // Cielo
+        scene.fog = new THREE.Fog(0x87ceeb, 20, 100);
 
-    function spawnEnemies() {
-        enemies = [];
-        const types = ['🐰', '🦊', '🦌', '🐂', '🐿️'];
-        for(let i=0; i<30; i++) {
-            enemies.push({
-                x: Math.random() * worldSize,
-                y: Math.random() * worldSize,
-                type: types[Math.floor(Math.random()*types.length)],
-                hp: 100, dead: false
-            });
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 5, 10);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // Luces
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(10, 20, 10);
+        light.castShadow = true;
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040, 1.5));
+
+        // Suelo Realista (Pasto)
+        const floorGeo = new THREE.PlaneGeometry(500, 500);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+        floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Representación del Lobo (Caja Estilizada por ahora para rendimiento)
+        const wolfGeo = new THREE.BoxGeometry(1, 1, 2);
+        const wolfMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+        wolf = new THREE.Mesh(wolfGeo, wolfMat);
+        wolf.position.y = 0.5;
+        wolf.castShadow = true;
+        scene.add(wolf);
+
+        // Agregar Árboles
+        for(let i=0; i<100; i++) {
+            createTree(Math.random()*200-100, Math.random()*200-100);
+        }
+
+        spawnPrey();
+    }
+
+    function createTree(x, z) {
+        const trunkGeo = new THREE.CylinderGeometry(0.2, 0.2, 2);
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+        trunk.position.set(x, 1, z);
+        
+        const leavesGeo = new THREE.ConeGeometry(1.5, 3, 8);
+        const leavesMat = new THREE.MeshStandardMaterial({ color: 0x006400 });
+        const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+        leaves.position.set(x, 3, z);
+        
+        scene.add(trunk);
+        scene.add(leaves);
+    }
+
+    function spawnPrey() {
+        const preyGeo = new THREE.SphereGeometry(0.5, 8, 8);
+        const preyMat = new THREE.MeshStandardMaterial({ color: 0xffa500 });
+        for(let i=0; i<20; i++) {
+            let p = new THREE.Mesh(preyGeo, preyMat);
+            p.position.set(Math.random()*100-50, 0.5, Math.random()*100-50);
+            scene.add(p);
+            entities.push(p);
         }
     }
 
     // --- REGLAS DE ORBES ---
-    function checkOrbsLogic() {
-        // Regla: Nivel 20 o Mapa 4
-        if(player.lv >= 20 || player.mapa >= 4) {
-            document.getElementById('orb-display').style.display = 'block';
-            // Probabilidad equilibrada (40%)
-            if(Math.random() < 0.4) {
-                player.orbes++;
-                document.getElementById('orb-count').innerText = player.orbes;
-                
-                if(player.orbes === 10) tg.showAlert("¡DESEO ÉPICO DISPONIBLE! (10 Orbes)");
-                if(player.orbes === 60) tg.showAlert("¡DESEO LEGENDARIO ALCANZADO! (60 Orbes)");
+    function checkOrbs() {
+        if(playerStats.lv >= 20 || playerStats.mapa >= 4) {
+            document.getElementById('orb-info').style.display = 'block';
+            if(Math.random() < 0.3) {
+                playerStats.orbes++;
+                document.getElementById('orb-count').innerText = playerStats.orbes;
+                if(playerStats.orbes === 10) tg.showAlert("¡Deseo Épico!");
+                if(playerStats.orbes === 60) tg.showAlert("¡Deseo Legendario!");
             }
         }
     }
 
-    function attack() {
+    // --- CONTROLES TÁCTILES ---
+    const stick = document.getElementById('joystick-stick');
+    document.getElementById('joystick-area').addEventListener('touchmove', e => {
+        const t = e.touches[0];
+        const rect = e.target.getBoundingClientRect();
+        let dx = t.clientX - (rect.left + 60);
+        let dy = t.clientY - (rect.top + 60);
+        let dist = Math.min(Math.sqrt(dx*dx+dy*dy), 40);
+        let angle = Math.atan2(dy, dx);
+        
+        joystick.x = Math.cos(angle) * (dist/40);
+        joystick.y = Math.sin(angle) * (dist/40);
+        stick.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
+    });
+
+    document.getElementById('joystick-area').addEventListener('touchend', () => {
+        joystick.x = 0; joystick.y = 0;
+        stick.style.transform = 'translate(0,0)';
+    });
+
+    document.getElementById('attack-btn').addEventListener('touchstart', () => {
         tg.HapticFeedback.impactOccurred('heavy');
-        enemies.forEach(en => {
-            if(!en.dead) {
-                let d = Math.hypot(en.x - player.x, en.y - player.y);
-                if(d < 120) {
-                    en.dead = true;
-                    player.xp += 34;
-                    checkOrbsLogic();
-                    if(player.xp >= 100) {
-                        player.lv++;
-                        player.xp = 0;
-                        if(player.lv === 20) tg.showAlert("¡Nivel 20! Ahora puedes cazar Orbes.");
-                        document.getElementById('lv').innerText = player.lv;
-                    }
-                    document.getElementById('xp-bar').style.width = (player.xp) + "%";
+        entities.forEach((p, i) => {
+            if(wolf.position.distanceTo(p.position) < 3) {
+                scene.remove(p);
+                entities.splice(i, 1);
+                playerStats.xp += 20;
+                checkOrbs();
+                if(playerStats.xp >= 100) {
+                    playerStats.lv++; playerStats.xp = 0;
+                    document.getElementById('lv').innerText = playerStats.lv;
                 }
             }
         });
-    }
-
-    function nextMap() {
-        player.mapa++;
-        player.x = 2500; player.y = 2500;
-        document.getElementById('map-num').innerText = player.mapa;
-        if(player.mapa === 4) tg.showAlert("¡Mapa 4: Tierra de Orbes!");
-        spawnEnemies();
-    }
-
-    // --- CONTROLES ---
-    document.getElementById('attack-btn').addEventListener('touchstart', attack);
-    document.getElementById('map-btn').addEventListener('touchstart', nextMap);
-
-    const joyOuter = document.getElementById('joy-outer');
-    const joyInner = document.getElementById('joy-inner');
-
-    window.addEventListener('touchstart', e => {
-        if(e.touches[0].clientX < window.innerWidth/2) joystick.active = true;
+        if(entities.length < 5) spawnPrey();
     });
 
-    window.addEventListener('touchmove', e => {
-        if(!joystick.active) return;
-        let t = e.touches[0];
-        let rect = joyOuter.getBoundingClientRect();
-        let dx = t.clientX - (rect.left + 60);
-        let dy = t.clientY - (rect.top + 60);
-        let dist = Math.min(Math.sqrt(dx*dx + dy*dy), 40);
-        joystick.angle = Math.atan2(dy, dx);
-        joystick.x = Math.cos(joystick.angle) * (dist/40);
-        joystick.y = Math.sin(joystick.angle) * (dist/40);
-        joyInner.style.transform = `translate(${Math.cos(joystick.angle)*dist}px, ${Math.sin(joystick.angle)*dist}px)`;
-    });
-
-    window.addEventListener('touchend', () => {
-        joystick.active = false; joystick.x = 0; joystick.y = 0;
-        joyInner.style.transform = `translate(0,0)`;
-    });
-
-    // --- LOOP PRINCIPAL ---
-    function gameLoop() {
-        if(!gameActive) return;
-
-        player.x += joystick.x * player.speed;
-        player.y += joystick.y * player.speed;
+    function animate() {
+        requestAnimationFrame(animate);
         
-        camera.x = player.x - canvas.width / 2;
-        camera.y = player.y - canvas.height / 2;
-
-        // Dibujar Fondo
-        ctx.fillStyle = '#141d0f';
-        ctx.fillRect(0,0, canvas.width, canvas.height);
-
-        ctx.save();
-        ctx.translate(-camera.x, -camera.y);
-
-        // Grid de bosque
-        ctx.strokeStyle = "rgba(255,255,255,0.05)";
-        for(let i=0; i<worldSize; i+=200) {
-            ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i, worldSize); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(worldSize, i); ctx.stroke();
+        // Movimiento
+        wolf.position.x += joystick.x * 0.2;
+        wolf.position.z += joystick.y * 0.2;
+        
+        if(Math.abs(joystick.x) > 0.1 || Math.abs(joystick.y) > 0.1) {
+            wolf.rotation.y = -Math.atan2(joystick.y, joystick.x) + Math.PI/2;
         }
 
-        // Animales
-        ctx.font = "40px Arial";
-        enemies.forEach(en => {
-            if(!en.dead) ctx.fillText(en.type, en.x, en.y);
-        });
+        // Cámara sigue al lobo
+        camera.position.x = wolf.position.x;
+        camera.position.z = wolf.position.z + 10;
+        camera.lookAt(wolf.position);
 
-        // Lobo (Jugador) con efecto de sombra
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = "white";
-        ctx.fillText("🐺", player.x - 20, player.y + 15);
-        ctx.shadowBlur = 0;
-
-        ctx.restore();
-        requestAnimationFrame(gameLoop);
+        renderer.render(scene, camera);
     }
 </script>
 </body>
