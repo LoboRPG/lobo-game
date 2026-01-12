@@ -2,214 +2,186 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wolf Simulator MMO - Orbes de Poder 🐺</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wolf Simulator MMO - Orbes de Poder</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin: 0; background: linear-gradient(180deg, #228B22 0%, #006400 70%, #2F4F2F 100%); font-family: 'Arial Black', Arial, sans-serif; overflow: hidden; color: #fff; }
-        canvas { display: block; touch-action: none; }
-        #ui { position: absolute; top: 10px; left: 10px; z-index: 20; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 15px; font-size: 14px; min-width: 200px; }
-        #stats { display: flex; justify-content: space-between; margin-bottom: 10px; }
-        #xp-bar { height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin-top: 5px; }
-        #xp-fill { height: 100%; background: linear-gradient(90deg, #ffaa00, #ff4400); transition: width 0.3s; }
-        #buttons { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 20; }
-        button { background: linear-gradient(145deg, #0088cc, #005a99); color: white; border: none; padding: 12px 24px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transition: all 0.2s; }
-        #orbs-display { position: absolute; top: 140px; left: 10px; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 10px; border: 1px solid #ffd700; z-index: 20; display: none; }
-        #minimap { position: absolute; top: 10px; right: 10px; width: 120px; height: 120px; background: rgba(0,0,0,0.8); border: 2px solid #fff; border-radius: 10px; z-index: 20; }
-        #joystick { position: absolute; bottom: 100px; left: 20px; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 4px solid rgba(255,255,255,0.5); display: none; z-index: 15; touch-action: none; }
-        #joystick-knob { position: absolute; width: 40px; height: 40px; background: rgba(255,255,255,0.8); border-radius: 50%; left: 30px; top: 30px; }
-        #mode { position: absolute; top: 10px; right: 140px; background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 20px; font-weight: bold; }
+        body { margin: 0; padding: 0; background: #0b1a07; overflow: hidden; font-family: 'Segoe UI', sans-serif; touch-action: none; color: white; }
+        canvas { display: block; background: #1a2e15; }
+        
+        /* Interfaz Superior */
+        .hud-top { position: fixed; top: 10px; left: 10px; z-index: 1000; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 10px; border: 2px solid #daa520; font-size: 14px; }
+        #orb-display { color: #f1c40f; font-weight: bold; margin-top: 5px; display: none; }
+
+        /* Botones Inferiores */
+        .controls-bottom { position: fixed; bottom: 20px; right: 20px; display: flex; gap: 10px; z-index: 1000; }
+        .btn { width: 60px; height: 60px; border-radius: 50%; border: 2px solid #fff; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; font-size: 24px; color: white; cursor: pointer; }
+        
+        /* Joystick Visual */
+        #joy-base { position: fixed; bottom: 40px; left: 40px; width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); z-index: 1000; }
+        #joy-stick { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: white; border-radius: 50%; transition: transform 0.1s; }
     </style>
 </head>
 <body>
-    <div id="ui">
-        <div id="stats">
-            <div>
-                <div>🐺 <span id="playerName">Lobo</span></div>
-                <div>HP: <span id="hp">100</span>/100</div>
-            </div>
-            <div>
-                Nivel: <span id="level">1</span>
-                <div id="xp-bar"><div id="xp-fill" style="width:0%"></div></div>
-                <div>XP: <span id="xp">0</span>/100</div>
-            </div>
-        </div>
-        <div>Hambre: <span id="hunger">100</span> | Mapa: <span id="mapNum">1</span></div>
+
+    <div class="hud-top">
+        🐺 <b><span id="p-name">Lobo</span></b> | LV: <span id="lv">1</span> | Mapa: <span id="mapa">1</span>
+        <div id="orb-display">✨ Orbes: <span id="orbes">0</span>/60</div>
     </div>
 
-    <div id="orbs-display">
-        ✨ Orbes: <span id="orbCount">0</span><br>
-        <small id="orbGoal">Caza para encontrar orbes</small>
+    <div class="controls-bottom">
+        <div class="btn" onclick="atacar()">⚔️</div>
+        <div class="btn" onclick="siguienteMapa()" style="background:#27ae60">🗺️</div>
     </div>
 
-    <div id="minimap"></div>
-    <div id="mode">Modo: Caza 🦌</div>
-    <div id="joystick"><div id="joystick-knob"></div></div>
+    <div id="joy-base"><div id="joy-stick"></div></div>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
     
-    <div id="buttons">
-        <button id="arenaBtn">Arena PvP ⚔️</button>
-        <button id="huntBtn">Siguiente Mapa 🗺️</button>
-    </div>
+    // Estado del Juego (Tus Reglas)
+    let player = { x: 0, y: 0, lv: 1, xp: 0, orbes: 0, mapa: 1, size: 40 };
+    let entities = [];
+    let joystick = { active: false, x: 0, y: 0 };
+    let camera = { x: 0, y: 0 };
 
-    <canvas id="canvas"></canvas>
-
-    <script>
-        'use strict';
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        let WIDTH, HEIGHT;
-        function resize() {
-            WIDTH = window.innerWidth; HEIGHT = window.innerHeight;
-            canvas.width = WIDTH; canvas.height = HEIGHT;
-        }
-        window.addEventListener('resize', resize);
+    function init() {
         resize();
+        spawnEntities();
+        loop();
+    }
 
-        // Game state
-        const WORLD_SIZE = 4000;
-        let currentMap = 1;
-        let orbsFound = 0;
-        let player = { x: 2000, y: 2000, vx: 0, vy: 0, speed: 4, angle: 0, hp: 100, maxHp: 100, xp: 0, level: 1, hunger: 100, packSize: 3, attackCooldown: 0 };
-        let camera = { x: 0, y: 0 };
-        let prey = [];
-        let trees = [];
-        let joystickActive = false;
-        let joystickAngle = 0;
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        player.x = canvas.width / 2;
+        player.y = canvas.height / 2;
+    }
 
-        const PREY_TYPES = [
-            { emoji: '🐰', size: 25, xp: 15, hp: 30 },
-            { emoji: '🦊', size: 30, xp: 30, hp: 50 },
-            { emoji: '🦌', size: 40, xp: 60, hp: 80 }
-        ];
-
-        function init() {
-            trees = [];
-            for (let i = 0; i < 200; i++) {
-                trees.push({ x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, size: 30 });
-            }
-            spawnPrey();
+    function spawnEntities() {
+        entities = [];
+        for(let i=0; i<20; i++) {
+            entities.push({
+                x: (Math.random() - 0.5) * 3000,
+                y: (Math.random() - 0.5) * 3000,
+                emoji: '🦌',
+                dead: false
+            });
         }
+    }
 
-        function spawnPrey() {
-            prey = [];
-            for (let i = 0; i < 15; i++) {
-                prey.push({
-                    x: Math.random() * WORLD_SIZE,
-                    y: Math.random() * WORLD_SIZE,
-                    type: Math.floor(Math.random() * PREY_TYPES.length),
-                    hp: 50, maxHp: 50, vx: 0, vy: 0
-                });
-            }
-        }
+    // LÓGICA DE ATAQUE Y ORBES (Tus reglas exactas)
+    function atacar() {
+        entities.forEach(en => {
+            let dx = en.x - (player.x + camera.x);
+            let dy = en.y - (player.y + camera.y);
+            let dist = Math.sqrt(dx*dx + dy*dy);
 
-        function update() {
-            // Movimiento simple
-            player.x += player.vx;
-            player.y += player.vy;
-            player.vx *= 0.9; player.vy *= 0.9;
-
-            // Mostrar display de Orbes si cumple requisitos
-            if (player.level >= 20 || currentMap >= 4) {
-                document.getElementById('orbs-display').style.display = 'block';
-            }
-
-            // Atacar y Lógica de Orbes
-            if (player.attackCooldown > 0) player.attackCooldown--;
-
-            prey.forEach((p, i) => {
-                let d = Math.hypot(p.x - player.x, p.y - player.y);
-                if (d < 60 && player.attackCooldown === 0) {
-                    p.hp -= 20;
-                    player.attackCooldown = 20;
-                    if (p.hp <= 0) {
-                        player.xp += PREY_TYPES[p.type].xp;
-                        prey.splice(i, 1);
-                        
-                        // LÓGICA DE ORBES REQUERIDA
-                        if (player.level >= 20 || currentMap >= 4) {
-                            let dropChance = Math.random();
-                            if (dropChance > 0.6) { // Probabilidad media
-                                orbsFound++;
-                                checkOrbs();
-                            }
-                        }
+            if(dist < 100 && !en.dead) {
+                en.dead = true;
+                player.xp += 20;
+                
+                // REGLA: Aparecen orbes en Mapa 4 o Nivel 20
+                if(player.lv >= 20 || player.mapa >= 4) {
+                    document.getElementById('orb-display').style.display = 'block';
+                    // Probabilidad ni fácil ni difícil (40%)
+                    if(Math.random() < 0.4) {
+                        player.orbes++;
+                        checkDeseos();
                     }
                 }
-            });
-
-            // Subir de nivel
-            if (player.xp >= player.level * 100) {
-                player.level++;
-                player.xp = 0;
-                tg.HapticFeedback.notificationOccurred('success');
+                checkLevel();
             }
+        });
+    }
 
-            // Cámara
-            camera.x = player.x - WIDTH / 2;
-            camera.y = player.y - HEIGHT / 2;
+    function checkDeseos() {
+        if(player.orbes === 10) tg.showAlert("¡CONCEDIDO! Tienes 10 orbes para un deseo ÉPICO.");
+        if(player.orbes === 60) tg.showAlert("¡PODER LEGENDARIO! 60 orbes para el gran deseo.");
+        document.getElementById('orbes').innerText = player.orbes;
+    }
 
-            // UI
-            document.getElementById('hp').textContent = player.hp;
-            document.getElementById('level').textContent = player.level;
-            document.getElementById('xp').textContent = player.xp;
-            document.getElementById('mapNum').textContent = currentMap;
-            document.getElementById('orbCount').textContent = orbsFound;
-            document.getElementById('xp-fill').style.width = (player.xp / (player.level * 100) * 100) + '%';
+    function checkLevel() {
+        if(player.xp >= 100) {
+            player.lv++;
+            player.xp = 0;
+            if(player.lv === 20) tg.showAlert("¡Nivel 20! Ahora puedes encontrar orbes cazando.");
+            document.getElementById('lv').innerText = player.lv;
         }
+    }
 
-        function checkOrbs() {
-            if (orbsFound === 10) {
-                tg.showAlert("✨ ¡Has reunido 10 Orbes! Puedes pedir un DESEO ÉPICO.");
-            } else if (orbsFound === 60) {
-                tg.showAlert("🔥 ¡PODER LEGENDARIO! 60 Orbes reunidos. El gran deseo es tuyo.");
+    function siguienteMapa() {
+        player.mapa++;
+        if(player.mapa === 4) tg.showAlert("¡Mapa 4! Los orbes han comenzado a aparecer.");
+        document.getElementById('mapa').innerText = player.mapa;
+        spawnEntities();
+    }
+
+    // CONTROLES TÁCTILES (Arreglado para tu celular)
+    const joyBase = document.getElementById('joy-base');
+    const joyStick = document.getElementById('joy-stick');
+
+    window.addEventListener('touchstart', e => {
+        const t = e.touches[0];
+        if(t.clientX < window.innerWidth / 2) { // Solo si toca el lado izquierdo
+            joystick.active = true;
+        }
+    });
+
+    window.addEventListener('touchmove', e => {
+        if(!joystick.active) return;
+        const t = e.touches[0];
+        const baseRect = joyBase.getBoundingClientRect();
+        const centerX = baseRect.left + baseRect.width / 2;
+        const centerY = baseRect.top + baseRect.height / 2;
+        
+        let dx = t.clientX - centerX;
+        let dy = t.clientY - centerY;
+        let dist = Math.min(Math.sqrt(dx*dx + dy*dy), 40);
+        let angle = Math.atan2(dy, dx);
+
+        joystick.x = Math.cos(angle) * (dist / 10);
+        joystick.y = Math.sin(angle) * (dist / 10);
+        
+        joyStick.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
+    });
+
+    window.addEventListener('touchend', () => {
+        joystick.active = false;
+        joystick.x = 0; joystick.y = 0;
+        joyStick.style.transform = `translate(0,0)`;
+    });
+
+    function loop() {
+        // Movimiento de cámara
+        camera.x += joystick.x;
+        camera.y += joystick.y;
+
+        // Dibujar
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Entidades
+        ctx.font = '30px Arial';
+        entities.forEach(en => {
+            if(!en.dead) {
+                ctx.fillText(en.emoji, en.x - camera.x, en.y - camera.y);
             }
-        }
-
-        function draw() {
-            ctx.clearRect(0, 0, WIDTH, HEIGHT);
-            ctx.save();
-            ctx.translate(-camera.x, -camera.y);
-
-            // Dibujar árboles
-            ctx.fillStyle = '#1a4a1a';
-            trees.forEach(t => {
-                ctx.beginPath(); ctx.arc(t.x, t.y, t.size, 0, Math.PI*2); ctx.fill();
-            });
-
-            // Dibujar presas
-            prey.forEach(p => {
-                ctx.font = '30px Arial';
-                ctx.fillText(PREY_TYPES[p.type].emoji, p.x, p.y);
-            });
-
-            // Dibujar Lobo
-            ctx.fillStyle = 'white';
-            ctx.beginPath(); ctx.arc(player.x, player.y, 20, 0, Math.PI*2); ctx.fill();
-
-            ctx.restore();
-        }
-
-        // Inputs
-        window.addEventListener('keydown', e => {
-            if(e.key === 'w') player.vy = -player.speed;
-            if(e.key === 's') player.vy = player.speed;
-            if(e.key === 'a') player.vx = -player.speed;
-            if(e.key === 'd') player.vx = player.speed;
         });
 
-        document.getElementById('huntBtn').onclick = () => {
-            currentMap++;
-            spawnPrey();
-            if (currentMap === 4) tg.showAlert("¡Has llegado al Mapa 4! Los Orbes ahora pueden aparecer.");
-        };
+        // Jugador (Lobo)
+        ctx.font = '40px Arial';
+        ctx.fillText('🐺', player.x - 20, player.y + 15);
 
-        function loop() { update(); draw(); requestAnimationFrame(loop); }
-        init();
-        loop();
-    </script>
+        requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('resize', resize);
+    init();
+</script>
 </body>
 </html>
