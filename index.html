@@ -3,89 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wolf MMO - Realistic Evolution</title>
+    <title>Wolf Simulator 3D MMO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #1a2e15; touch-action: none; font-family: sans-serif; }
-        #ui { position: fixed; top: 20px; left: 20px; color: white; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 10px; z-index: 10; border-left: 4px solid #daa520; }
-        #controls { position: fixed; bottom: 30px; width: 100%; display: flex; justify-content: space-around; z-index: 20; }
-        .btn { width: 80px; height: 80px; background: rgba(255,255,255,0.2); border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; font-size: 30px; color: white; }
+        body { margin: 0; overflow: hidden; background: #1a2e15; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        #ui { position: fixed; top: 20px; left: 20px; color: white; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 12px; border-left: 5px solid #daa520; pointer-events: none; z-index: 10; }
+        #orb-info { position: fixed; top: 20px; right: 20px; color: #ffd700; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 12px; display: none; z-index: 10; font-weight: bold; }
+        #controls { position: fixed; bottom: 40px; width: 100%; display: flex; justify-content: space-around; z-index: 20; }
+        .joy-base { width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid #fff; position: relative; }
+        .joy-stick { width: 40px; height: 40px; background: #fff; border-radius: 50%; position: absolute; top: 30px; left: 30px; }
+        .atk-btn { width: 90px; height: 90px; background: #8b0000; border-radius: 50%; border: 3px solid #fff; color: white; display: flex; align-items: center; justify-content: center; font-size: 40px; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <b>🐺 LOBO REALISTA</b><br>
-        Nivel: <span id="lv">1</span> | Mapa: <span id="map">1</span>
+        <b>🐺 LOBO ALFA PRO</b><br>
+        Nivel: <span id="lv">1</span> | Mapa: <span id="map-txt">1</span>
     </div>
+    <div id="orb-info">✨ Orbes: <span id="orb-count">0</span>/60</div>
 
     <div id="controls">
-        <div class="btn" id="joy">🕹️</div>
-        <div class="btn" onclick="atacar()" style="background: #8b0000;">🐾</div>
+        <div class="joy-base" id="joy-b"><div class="joy-stick" id="joy-s"></div></div>
+        <div class="atk-btn" id="atk-btn">🐾</div>
     </div>
 
     <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+
         let scene, camera, renderer, wolf;
-        let loader = new THREE.GLTFLoader();
+        let joystick = { x: 0, y: 0 };
+        let preys = [];
+        let player = { lv: 1, xp: 0, orbes: 0, mapa: 1 };
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x6699ff);
-            
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 5, 10);
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.Fog(0x87ceeb, 20, 100);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 8, 15);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
 
-            const light = new THREE.DirectionalLight(0xffffff, 1);
-            light.position.set(5, 10, 5);
-            light.castShadow = true;
-            scene.add(light, new THREE.AmbientLight(0xffffff, 0.5));
+            const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+            sun.position.set(10, 20, 10);
+            sun.castShadow = true;
+            scene.add(sun, new THREE.AmbientLight(0xffffff, 0.6));
 
-            // Suelo con textura de bosque
-            const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({color: 0x1b3012}));
-            ground.rotation.x = -Math.PI/2;
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshStandardMaterial({ color: 0x2d4c1e }));
+            ground.rotation.x = -Math.PI / 2;
             ground.receiveShadow = true;
             scene.add(ground);
 
-            // CARGA DEL MODELO PROFESIONAL
-            // Intentamos cargar un modelo de lobo real. Si no carga, creamos uno detallado con código.
-            loader.load('https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF/Fox.gltf', (gltf) => {
+            // CARGAR LOBO REALISTA (Modelo externo de lobo)
+            const loader = new THREE.GLTFLoader();
+            // Este es un modelo de lobo gris realista
+            loader.load('https://raw.githubusercontent.com/mkkellogg/ThreeJs-Wolf-Simulation/master/models/wolf.glb', (gltf) => {
                 wolf = gltf.scene;
-                wolf.scale.set(0.05, 0.05, 0.05); // Ajuste de tamaño
+                wolf.scale.set(2, 2, 2);
                 wolf.traverse(n => { if(n.isMesh) n.castShadow = true; });
                 scene.add(wolf);
-            }, undefined, () => {
-                // Si falla el internet, creamos un lobo con partes separadas para que NO sea un bloque
-                crearLoboDeEmergencia();
+            }, undefined, (e) => {
+                console.error("Error cargando lobo, usando respaldo");
+                crearLoboRespaldo();
             });
 
+            spawnNature();
             animate();
         }
 
-        function crearLoboDeEmergencia() {
+        function crearLoboRespaldo() {
             wolf = new THREE.Group();
-            const mat = new THREE.MeshStandardMaterial({color: 0x444444});
-            const cuerpo = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1.5, 4, 8), mat);
-            cuerpo.rotation.x = Math.PI/2;
-            const cabeza = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), mat);
-            cabeza.position.set(0, 0.5, 1);
-            wolf.add(cuerpo, cabeza);
+            const m = new THREE.MeshStandardMaterial({color: 0x444444});
+            const b = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 2.5), m);
+            wolf.add(b);
             scene.add(wolf);
         }
+
+        function spawnNature() {
+            const pGeo = new THREE.SphereGeometry(0.7, 12, 12);
+            for(let i=0; i<15; i++) {
+                const p = new THREE.Mesh(pGeo, new THREE.MeshStandardMaterial({ color: 0xaa6644 }));
+                p.position.set(Math.random()*100-50, 0.7, Math.random()*100-50);
+                scene.add(p);
+                preys.push(p);
+            }
+        }
+
+        function checkOrbs() {
+            // Regla: Nivel 20 o Mapa 4 [cite: 2026-01-10]
+            if(player.lv >= 20 || player.mapa >= 4) {
+                document.getElementById('orb-info').style.display = 'block';
+                // Probabilidad equilibrada (no fácil ni difícil) [cite: 2026-01-10]
+                if(Math.random() < 0.35) {
+                    player.orbes++;
+                    document.getElementById('orb-count').innerText = player.orbes;
+                    if(player.orbes === 10) tg.showAlert("✨ ¡Deseo Épico!"); [cite: 2026-01-10]
+                    if(player.orbes === 60) tg.showAlert("🔥 ¡Deseo Legendario!"); [cite: 2026-01-10]
+                }
+            }
+        }
+
+        // Controles Táctiles
+        const b = document.getElementById('joy-b');
+        const s = document.getElementById('joy-s');
+        b.addEventListener('touchmove', e => {
+            const r = b.getBoundingClientRect();
+            let x = e.touches[0].clientX - (r.left + 50);
+            let y = e.touches[0].clientY - (r.top + 50);
+            const d = Math.min(Math.sqrt(x*x + y*y), 40);
+            const a = Math.atan2(y, x);
+            joystick.x = Math.cos(a) * (d/40);
+            joystick.y = Math.sin(a) * (d/40);
+            s.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
+        });
+        b.addEventListener('touchend', () => {
+            joystick.x = 0; joystick.y = 0;
+            s.style.transform = 'translate(0,0)';
+        });
+
+        document.getElementById('atk-btn').addEventListener('touchstart', () => {
+            tg.HapticFeedback.impactOccurred('heavy');
+            preys.forEach((p, i) => {
+                if(wolf.position.distanceTo(p.position) < 4) {
+                    scene.remove(p);
+                    preys.splice(i, 1);
+                    player.xp += 25;
+                    checkOrbs();
+                    if(player.xp >= 100) {
+                        player.lv++; player.xp = 0;
+                        document.getElementById('lv').innerText = player.lv;
+                    }
+                }
+            });
+            if(preys.length < 5) spawnNature();
+        });
 
         function animate() {
             requestAnimationFrame(animate);
             if(wolf) {
-                // Aquí irá el movimiento del joystick
+                wolf.position.x += joystick.x * 0.3;
+                wolf.position.z += joystick.y * 0.3;
+                if(Math.abs(joystick.x) > 0.1 || Math.abs(joystick.y) > 0.1) {
+                    wolf.rotation.y = -Math.atan2(joystick.y, joystick.x) + Math.PI/2;
+                }
+                camera.position.set(wolf.position.x, 10, wolf.position.z + 15);
                 camera.lookAt(wolf.position);
             }
             renderer.render(scene, camera);
         }
-
         init();
     </script>
 </body>
